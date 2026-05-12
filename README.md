@@ -91,6 +91,23 @@ pytest -q
 
 Los tests recrean el esquema en cada caso (drop/create) sobre la base configurada; **no** uses una base de datos con datos que quieras conservar.
 
+## Datos de demostración (frontend / Railway)
+
+Tras `alembic upgrade head`, puedes poblar Postgres con un taller de prueba (usuarios, clientes, equipos, inventario, órdenes en varios estados, timeline, PDF de ejemplo):
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m scripts.seed_demo
+```
+
+Para **borrar y volver a crear** esa empresa demo (NIT `901-DEMO-SG`):
+
+```powershell
+python -m scripts.seed_demo --force
+```
+
+Contraseña de todos los usuarios demo: **`Demo1234`**. Cuentas útiles: `admin@demo.sgtaller.local`, `recepcion@...`, `tecnico1@...`, `visitante@...` (ver docstring en [`scripts/seed_demo.py`](scripts/seed_demo.py)).
+
 ## Estructura
 
 - `app/main.py`: aplicación FastAPI.
