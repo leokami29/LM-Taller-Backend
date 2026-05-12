@@ -1,8 +1,27 @@
 import json
-from typing import Any, List, Optional, Union
+from typing import Any, Optional
 
-from pydantic import field_validator
+from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _parse_cors_origins(v: Any) -> list[str]:
+    """Acepta lista, JSON array en string, o valores separados por comas (desde .env)."""
+    if v is None or v == "":
+        return ["http://localhost:3000", "http://localhost:8000"]
+    if isinstance(v, list):
+        return [str(x) for x in v]
+    if isinstance(v, str):
+        s = v.strip()
+        if s.startswith("["):
+            try:
+                parsed = json.loads(s)
+                if isinstance(parsed, list):
+                    return [str(x) for x in parsed]
+            except json.JSONDecodeError:
+                pass
+        return [part.strip() for part in s.split(",") if part.strip()]
+    return ["http://localhost:3000", "http://localhost:8000"]
 
 
 class Settings(BaseSettings):
@@ -21,7 +40,11 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000"]
+    # En .env va como string (coma o JSON); no usar list[str] aquí: pydantic-settings intenta json.loads antes.
+    cors_origins_raw: str = Field(
+        default="http://localhost:3000,http://localhost:8000",
+        validation_alias="CORS_ORIGINS",
+    )
 
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_ACCESS_KEY: str = "minioadmin"
@@ -35,24 +58,10 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: Optional[str] = None
     SMTP_FROM_EMAIL: str = "noreply@sgtaller.com"
 
-    @field_validator("CORS_ORIGINS", mode="before")
-    @classmethod
-    def parse_cors_origins(cls, v: Any) -> Union[List[str], Any]:
-        if v is None or v == "":
-            return ["http://localhost:3000", "http://localhost:8000"]
-        if isinstance(v, list):
-            return v
-        if isinstance(v, str):
-            s = v.strip()
-            if s.startswith("["):
-                try:
-                    parsed = json.loads(s)
-                    if isinstance(parsed, list):
-                        return [str(x) for x in parsed]
-                except json.JSONDecodeError:
-                    pass
-            return [part.strip() for part in s.split(",") if part.strip()]
-        return v
+    @computed_field
+    @property
+    def cors_origins(self) -> list[str]:
+        return _parse_cors_origins(self.cors_origins_raw)
 
 
 settings = Settings()

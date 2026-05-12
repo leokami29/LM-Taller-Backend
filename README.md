@@ -9,16 +9,25 @@ API REST modular para gestión de centros de servicio técnico (multi-tenant por
 
 ## Arranque rápido
 
-```bash
+**Importante (Windows):** usa un entorno virtual y el `python` de ese venv. Si instalas en el Python del sistema, `alembic` puede no encontrarse o faltan ruedas para tu versión de Python.
+
+Se recomienda **Python 3.12 o 3.13** con el venv del proyecto:
+
+```powershell
 cd Backend
 python -m venv .venv
-.venv\Scripts\activate   # Windows
-pip install -r requirements.txt
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 copy .env.example .env
-docker compose up -d postgres
+# Edita .env con tu DATABASE_URL (p. ej. Railway)
+# Opcional en local:
+# docker compose up -d postgres
 python -m alembic upgrade head
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+Si ves `No module named alembic`, casi siempre es que no activaste el venv o no corriste `pip install -r requirements.txt` en ese mismo Python.
 
 Documentación interactiva: `http://localhost:8000/docs`
 
