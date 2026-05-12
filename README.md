@@ -106,7 +106,7 @@ Para **borrar y volver a crear** esa empresa demo (NIT `901-DEMO-SG`):
 python -m scripts.seed_demo --force
 ```
 
-Contraseña de todos los usuarios demo: **`Demo1234`**. Cuentas útiles: `admin@demo.sgtaller.local`, `recepcion@...`, `tecnico1@...`, `visitante@...` (ver docstring en [`scripts/seed_demo.py`](scripts/seed_demo.py)).
+Contraseña de todos los usuarios demo: **`Demo1234`**. Cuentas útiles: `admin@demo.sgtaller.com`, `recepcion@...`, `tecnico1@...`, `visitante@...` (ver docstring en [`scripts/seed_demo.py`](scripts/seed_demo.py)).
 
 ## Estructura
 

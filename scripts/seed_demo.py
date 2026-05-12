@@ -7,12 +7,12 @@ Uso (desde la carpeta Backend, con .venv activado y DATABASE_URL en .env):
   python -m scripts.seed_demo --force   # borra la empresa demo previa y vuelve a crear
 
 Credenciales de prueba (contraseña en todas: Demo1234):
-  - admin@demo.sgtaller.local     (admin)
-  - recepcion@demo.sgtaller.local (reception)
-  - tecnico1@demo.sgtaller.local    (technician)
-  - tecnico2@demo.sgtaller.local    (technician)
-  - visitante@demo.sgtaller.local   (viewer)
-  - baja@demo.sgtaller.local        (viewer, cuenta inactiva)
+  - admin@demo.sgtaller.com     (admin)
+  - recepcion@demo.sgtaller.com (reception)
+  - tecnico1@demo.sgtaller.com    (technician)
+  - tecnico2@demo.sgtaller.com    (technician)
+  - visitante@demo.sgtaller.com   (viewer)
+  - baja@demo.sgtaller.com        (viewer, cuenta inactiva)
 """
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ from app.db.models.user import User
 from app.db.session import SessionLocal
 
 DEMO_NIT = "901-DEMO-SG"
-DEMO_EMAIL_DOMAIN = "demo.sgtaller.local"
+DEMO_EMAIL_DOMAIN = "demo.sgtaller.com"
 DEMO_PASSWORD = "Demo1234"
 
 
