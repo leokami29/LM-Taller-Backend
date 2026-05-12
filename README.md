@@ -16,7 +16,7 @@ python -m venv .venv
 pip install -r requirements.txt
 copy .env.example .env
 docker compose up -d postgres
-alembic upgrade head
+python -m alembic upgrade head
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -40,7 +40,7 @@ Ver [.env.example](.env.example). Destacadas:
 3. Aplica migraciones contra esa base (desde la carpeta `Backend`, con el entorno activo y dependencias instaladas):
 
    ```bash
-   alembic upgrade head
+   python -m alembic upgrade head
    ```
 
 4. Si despliegas la API **también en Railway**, define las mismas variables en el servicio (pestaña **Variables**): `DATABASE_URL`, `SECRET_KEY`, `CORS_ORIGINS`, etc. No pegues secretos en el repositorio.
@@ -76,7 +76,7 @@ Recomendado: crear empresa y admin vía SQLAlchemy en un script local o usar los
 Requiere Postgres accesible con la misma `DATABASE_URL` que uses en `.env`:
 
 ```bash
-alembic upgrade head
+python -m alembic upgrade head
 pytest -q
 ```
 
