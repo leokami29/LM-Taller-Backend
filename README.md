@@ -30,6 +30,23 @@ Ver [.env.example](.env.example). Destacadas:
 - `SECRET_KEY`: clave para firmar JWT (obligatoria en producción).
 - `CORS_ORIGINS`: lista separada por comas o JSON.
 
+### PostgreSQL en Railway
+
+1. En Railway, abre el plugin **Postgres** y copia la **URL pública** (o la variable `DATABASE_URL` que te genera).
+2. En tu máquina, pega esa URL en el archivo **`.env`** (no en `.env.example`; `.env` no se sube a git). Para conexiones por el proxy público suele hacer falta SSL:
+
+   `postgresql://USER:PASSWORD@HOST:PORT/railway?sslmode=require`
+
+3. Aplica migraciones contra esa base (desde la carpeta `Backend`, con el entorno activo y dependencias instaladas):
+
+   ```bash
+   alembic upgrade head
+   ```
+
+4. Si despliegas la API **también en Railway**, define las mismas variables en el servicio (pestaña **Variables**): `DATABASE_URL`, `SECRET_KEY`, `CORS_ORIGINS`, etc. No pegues secretos en el repositorio.
+
+**Seguridad:** si la URL o la contraseña se compartieron en un chat o issue, conviene **rotar la contraseña** del usuario de Postgres en Railway y actualizar `DATABASE_URL`.
+
 ## Docker (API + Postgres + Redis + MinIO)
 
 ```bash
