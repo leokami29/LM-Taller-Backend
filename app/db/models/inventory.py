@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Index, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, Enum as SAEnum, ForeignKey, Index, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -60,6 +60,10 @@ class InventoryMovement(Base):
         Index("ix_inventory_movements_item_id", "inventory_item_id"),
         Index("ix_inventory_movements_service_order_id", "service_order_id"),
         Index("ix_inventory_movements_moved_at", "moved_at"),
+        CheckConstraint(
+            "movement_type != 'used_in_repair' OR service_order_id IS NOT NULL",
+            name="ck_inventory_movements_used_in_repair_requires_order",
+        ),
     )
 
     id: Mapped[Any] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)

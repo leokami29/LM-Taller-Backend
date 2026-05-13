@@ -22,6 +22,9 @@ def apply_stock_change(
     if item.company_id != company_id:
         raise ValueError("Ítem no pertenece a la empresa")
 
+    if movement_type == InventoryMovementType.USED_IN_REPAIR and service_order_id is None:
+        raise ValueError("El consumo en reparación (used_in_repair) debe ir asociado a una orden de servicio")
+
     current = Decimal(item.quantity_stock or 0)
     delta = Decimal(quantity_change)
     new_qty = current + delta
