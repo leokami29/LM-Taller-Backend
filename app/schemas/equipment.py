@@ -5,6 +5,16 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class EquipmentOwnerSummary(BaseModel):
+    """Cliente titular del equipo (subset para listados y detalle)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    first_name: str
+    last_name: str
+
+
 class EquipmentCreate(BaseModel):
     serial_number: str = Field(..., min_length=1, max_length=120)
     equipment_type: Optional[str] = None
@@ -43,6 +53,7 @@ class EquipmentResponse(BaseModel):
     imei: Optional[str]
     color: Optional[str]
     original_owner_id: Optional[UUID]
+    original_owner: Optional[EquipmentOwnerSummary] = None
     photos_urls: list[Any]
     additional_notes: Optional[str]
     created_at: datetime

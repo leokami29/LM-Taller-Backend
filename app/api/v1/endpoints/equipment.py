@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.permissions import (
     EQUIPMENT_DELETE,
@@ -44,7 +44,13 @@ def list_equipment(
     if brand:
         q = q.filter(Equipment.brand.ilike(f"%{brand}%"))
     total = q.count()
-    items = q.order_by(Equipment.created_at.desc()).offset(skip).limit(limit).all()
+    items = (
+        q.options(joinedload(Equipment.original_owner))
+        .order_by(Equipment.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
     return {"items": items, "total": total, "skip": skip, "limit": limit}
 
 
@@ -85,7 +91,15 @@ def create_equipment(
     db.add(eq)
     db.commit()
     db.refresh(eq)
-    return eq
+    eq_loaded = (
+        db.query(Equipment)
+        .options(joinedload(Equipment.original_owner))
+        .filter(Equipment.id == eq.id, Equipment.company_id == current_user.company_id)
+        .first()
+    )
+    if not eq_loaded:
+        raise HTTPException(status_code=500, detail="No se pudo cargar el equipo creado")
+    return eq_loaded
 
 
 @router.get("/{equipment_id}", response_model=EquipmentResponse)
@@ -96,6 +110,7 @@ def get_equipment(
 ) -> Equipment:
     eq = (
         db.query(Equipment)
+        .options(joinedload(Equipment.original_owner))
         .filter(Equipment.id == equipment_id, Equipment.company_id == current_user.company_id)
         .first()
     )
@@ -115,6 +130,7 @@ def update_equipment(
 
     eq = (
         db.query(Equipment)
+        .options(joinedload(Equipment.original_owner))
         .filter(Equipment.id == equipment_id, Equipment.company_id == current_user.company_id)
         .first()
     )
@@ -153,6 +169,12 @@ def update_equipment(
     db.add(eq)
     db.commit()
     db.refresh(eq)
+    eq = (
+        db.query(Equipment)
+        .options(joinedload(Equipment.original_owner))
+        .filter(Equipment.id == equipment_id, Equipment.company_id == current_user.company_id)
+        .first()
+    )
     return eq
 
 
