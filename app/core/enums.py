@@ -41,6 +41,14 @@ class InventoryMovementType(str, Enum):
     DAMAGE = "damage"
 
 
+class CostLineCategory(str, Enum):
+    """Clasificación de una línea de costo en una orden (desglose normalizado)."""
+
+    PARTS = "parts"
+    LABOR = "labor"
+    OTHER = "other"
+
+
 class IdentificationType(str, Enum):
     CC = "CC"
     NIT = "NIT"

@@ -35,6 +35,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.enums import (
+    CostLineCategory,
     IdentificationType,
     InventoryMovementType,
     OrderPriority,
@@ -47,10 +48,11 @@ from app.db.models.customer import Customer
 from app.db.models.equipment import Equipment
 from app.db.models.inventory import InventoryItem, InventoryMovement
 from app.db.models.pdf_document import PDFDocument
-from app.db.models.service_order import ServiceOrder, ServiceOrderTimeline
+from app.db.models.service_order import ServiceOrder, ServiceOrderCostLine, ServiceOrderTimeline
 from app.db.models.supplier import Supplier
 from app.db.models.user import User
 from app.db.session import SessionLocal
+from app.services.order_service import recompute_total_cost
 from scripts.seed_platform import ensure_platform_users, platform_dev_credentials_lines
 from scripts.seed_utils import delete_company_cascade
 
@@ -720,6 +722,33 @@ def seed_demo(*, force: bool = False) -> None:
         ]
         session.add_all(orders)
         session.flush()
+
+        for o in orders[1:]:
+            if o.cost_parts and o.cost_parts > 0:
+                session.add(
+                    ServiceOrderCostLine(
+                        company_id=company.id,
+                        service_order_id=o.id,
+                        category=CostLineCategory.PARTS,
+                        description="Repuestos (demo)",
+                        amount=o.cost_parts,
+                        sort_order=0,
+                    )
+                )
+            if o.cost_labor and o.cost_labor > 0:
+                session.add(
+                    ServiceOrderCostLine(
+                        company_id=company.id,
+                        service_order_id=o.id,
+                        category=CostLineCategory.LABOR,
+                        description="Mano de obra (demo)",
+                        amount=o.cost_labor,
+                        sort_order=1,
+                    )
+                )
+        session.flush()
+        for o in orders[1:]:
+            recompute_total_cost(session, o)
 
         # Timeline de ejemplo en una orden con historial
         o_hist = orders[1]

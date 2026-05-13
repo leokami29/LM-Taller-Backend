@@ -11,7 +11,7 @@ from app.db.models.customer import Customer
 from app.db.models.equipment import Equipment
 from app.db.models.inventory import InventoryItem, InventoryMovement
 from app.db.models.pdf_document import PDFDocument
-from app.db.models.service_order import ServiceOrder, ServiceOrderTimeline
+from app.db.models.service_order import ServiceOrder, ServiceOrderCostLine, ServiceOrderTimeline
 from app.db.models.supplier import Supplier
 from app.db.models.user import User
 
@@ -31,6 +31,7 @@ def delete_company_cascade(session: Session, company_id) -> None:
         session.scalars(select(ServiceOrder.id).where(ServiceOrder.company_id == company_id)).all()
     )
     if order_ids:
+        session.execute(delete(ServiceOrderCostLine).where(ServiceOrderCostLine.service_order_id.in_(order_ids)))
         session.execute(delete(ServiceOrderTimeline).where(ServiceOrderTimeline.service_order_id.in_(order_ids)))
         session.execute(delete(InventoryMovement).where(InventoryMovement.service_order_id.in_(order_ids)))
         session.execute(delete(ServiceOrder).where(ServiceOrder.company_id == company_id))

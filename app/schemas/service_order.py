@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.enums import OrderPriority, OrderStatus
+from app.core.enums import CostLineCategory, OrderPriority, OrderStatus
 
 
 class ServiceOrderCreate(BaseModel):
@@ -34,6 +34,33 @@ class ServiceOrderStatusPatch(BaseModel):
     status: OrderStatus
     notes: Optional[str] = None
     time_spent_seconds: Optional[int] = Field(None, ge=0)
+
+
+class ServiceOrderCostLineCreate(BaseModel):
+    category: CostLineCategory
+    amount: Decimal = Field(..., decimal_places=2, ge=0)
+    description: Optional[str] = Field(None, max_length=255)
+    sort_order: int = Field(0, ge=0, le=9999)
+
+
+class ServiceOrderCostLineUpdate(BaseModel):
+    category: Optional[CostLineCategory] = None
+    amount: Optional[Decimal] = Field(None, decimal_places=2, ge=0)
+    description: Optional[str] = Field(None, max_length=255)
+    sort_order: Optional[int] = Field(None, ge=0, le=9999)
+
+
+class ServiceOrderCostLineResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    company_id: UUID
+    service_order_id: UUID
+    category: CostLineCategory
+    description: Optional[str]
+    amount: Decimal
+    sort_order: int
+    created_at: datetime
 
 
 class ServiceOrderResponse(BaseModel):

@@ -8,7 +8,7 @@ from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Index, Integer, Num
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.enums import OrderPriority, OrderStatus
+from app.core.enums import CostLineCategory, OrderPriority, OrderStatus
 from app.db.base import Base
 
 if TYPE_CHECKING:
@@ -66,6 +66,12 @@ class ServiceOrder(Base):
     created_by: Mapped["User | None"] = relationship(
         "User", foreign_keys=[created_by_id], back_populates="orders_created"
     )
+    cost_lines: Mapped[list["ServiceOrderCostLine"]] = relationship(
+        "ServiceOrderCostLine",
+        back_populates="service_order",
+        cascade="all, delete-orphan",
+        order_by="ServiceOrderCostLine.sort_order",
+    )
     timeline_entries: Mapped[list["ServiceOrderTimeline"]] = relationship(
         "ServiceOrderTimeline", back_populates="service_order", cascade="all, delete-orphan"
     )
@@ -86,3 +92,29 @@ class ServiceOrderTimeline(Base):
 
     service_order: Mapped["ServiceOrder"] = relationship("ServiceOrder", back_populates="timeline_entries")
     changed_by: Mapped["User | None"] = relationship("User")
+
+
+class ServiceOrderCostLine(Base):
+    """Líneas de costo por orden: fuente de verdad cuando existen filas."""
+
+    __tablename__ = "service_order_cost_lines"
+    __table_args__ = (
+        Index("ix_service_order_cost_lines_company_id", "company_id"),
+        Index("ix_service_order_cost_lines_order_id", "service_order_id"),
+    )
+
+    id: Mapped[Any] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[Any] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
+    service_order_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("service_orders.id", ondelete="CASCADE"), nullable=False
+    )
+    category: Mapped[CostLineCategory] = mapped_column(
+        SAEnum(CostLineCategory, values_callable=lambda x: [e.value for e in x], native_enum=False),
+        nullable=False,
+    )
+    description: Mapped[str | None] = mapped_column(String(255))
+    amount: Mapped[Any] = mapped_column(Numeric(12, 2), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    service_order: Mapped["ServiceOrder"] = relationship("ServiceOrder", back_populates="cost_lines")
