@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import InventoryMovementType
+from app.core.dt import utc_now
 from app.db.base import Base
 
 if TYPE_CHECKING:
@@ -41,9 +42,9 @@ class InventoryItem(Base):
     barcode: Mapped[str | None] = mapped_column(String(120))
     weight: Mapped[Any | None] = mapped_column(Numeric(12, 3))
     dimensions_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utc_now, onupdate=utc_now
     )
     last_restocked_at: Mapped[datetime | None] = mapped_column(DateTime)
 
@@ -76,7 +77,7 @@ class InventoryMovement(Base):
     service_order_id: Mapped[Any | None] = mapped_column(UUID(as_uuid=True), ForeignKey("service_orders.id"))
     notes: Mapped[str | None] = mapped_column(Text)
     moved_by_id: Mapped[Any | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
-    moved_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    moved_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     inventory_item: Mapped["InventoryItem"] = relationship("InventoryItem", back_populates="movements")
     service_order: Mapped["ServiceOrder | None"] = relationship("ServiceOrder")

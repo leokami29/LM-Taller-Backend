@@ -8,6 +8,7 @@ from sqlalchemy import Date, DateTime, ForeignKey, Index, String, Text, UniqueCo
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.dt import utc_now
 from app.db.base import Base
 
 if TYPE_CHECKING:
@@ -33,9 +34,9 @@ class Equipment(Base):
     original_owner_id: Mapped[Any | None] = mapped_column(UUID(as_uuid=True), ForeignKey("customers.id"))
     photos_urls: Mapped[list[Any]] = mapped_column(JSONB, default=list)
     additional_notes: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utc_now, onupdate=utc_now
     )
     first_received_date: Mapped[date | None] = mapped_column(Date)
 

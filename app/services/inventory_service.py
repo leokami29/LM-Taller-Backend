@@ -3,6 +3,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.core.dt import utc_now
 from app.core.enums import InventoryMovementType
 from app.core.exceptions import InsufficientStockError
 from app.db.models.inventory import InventoryItem, InventoryMovement
@@ -33,9 +34,7 @@ def apply_stock_change(
 
     item.quantity_stock = new_qty
     if movement_type == InventoryMovementType.PURCHASE and delta > 0:
-        from datetime import datetime
-
-        item.last_restocked_at = datetime.utcnow()
+        item.last_restocked_at = utc_now()
 
     db.add(item)
     movement = InventoryMovement(

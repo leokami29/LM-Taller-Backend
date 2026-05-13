@@ -36,6 +36,14 @@ class PlatformCompanyCreate(BaseModel):
     admin_email: EmailStr
     admin_full_name: str = Field(..., min_length=1, max_length=255)
     admin_password: str = Field(..., min_length=8)
+    tenant_slug: Optional[str] = Field(
+        default=None,
+        description="Obligatorio con USE_TENANT_DATABASE_ROUTING: slug único del taller.",
+    )
+    tenant_database_url: Optional[str] = Field(
+        default=None,
+        description="Obligatorio con USE_TENANT_DATABASE_ROUTING: URL del Postgres del taller (vacío ya provisionado).",
+    )
 
 
 class PlatformCompanyResponse(BaseModel):

@@ -21,12 +21,15 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             raise
         elapsed_ms = (time.perf_counter() - start) * 1000
         response.headers["X-Request-ID"] = request_id
+        tenant = getattr(request.state, "tenant_company_id", None)
+        tenant_part = f" tenant_company_id={tenant}" if tenant else ""
         logger.info(
-            "request_id=%s method=%s path=%s status=%s elapsed_ms=%.2f",
+            "request_id=%s method=%s path=%s status=%s elapsed_ms=%.2f%s",
             request_id,
             request.method,
             request.url.path,
             getattr(response, "status_code", "?"),
             elapsed_ms,
+            tenant_part,
         )
         return response

@@ -38,6 +38,7 @@ Ver [.env.example](.env.example). Destacadas:
 - `DATABASE_URL`: cadena SQLAlchemy/Postgres.
 - `SECRET_KEY`: clave para firmar JWT (obligatoria en producción).
 - `CORS_ORIGINS`: lista separada por comas o JSON.
+- Opcional **database-per-tenant**: `USE_TENANT_DATABASE_ROUTING`, `CATALOG_DATABASE_URL`, `TENANT_DATABASE_URL_MAP_JSON` (ver [.env.example](.env.example)). Migraciones del catálogo: `python -m alembic -c alembic_catalog.ini upgrade head`. ADR: [docs/adr/ADR-001-tenant-login-and-database-per-tenant.md](docs/adr/ADR-001-tenant-login-and-database-per-tenant.md).
 
 ### PostgreSQL en Railway
 
@@ -68,9 +69,9 @@ La API espera a que Postgres esté sano, aplica migraciones y levanta Uvicorn en
 
 ### Empresa (taller) — `/api/v1`
 
-- `POST /api/v1/auth/login` (JSON: `email`, `password`) devuelve `access_token`, `refresh_token` y `user`.
+- `POST /api/v1/auth/login` (JSON: `email`, `password`, y con routing por tenant activo también `tenant_slug`) devuelve `access_token`, `refresh_token` y `user`.
 - `POST /api/v1/auth/refresh` (JSON: `refresh_token`) rota el par de tokens.
-- `POST /api/v1/auth/token` (OAuth2 password flow para Swagger: `username` = email).
+- `POST /api/v1/auth/token` (OAuth2 password flow para Swagger: `username` = email; con routing por tenant añadir query `tenant_slug=...`).
 - `GET /api/v1/auth/me` con cabecera `Authorization: Bearer <access_token>`.
 
 Los JWT de empresa incluyen `typ=tenant` y `company_id` firmado; no aceptes `company_id` enviado por el cliente para filtrar datos.

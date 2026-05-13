@@ -32,7 +32,12 @@ app.include_router(platform_v1_router)
 
 @app.get("/health")
 def health_check() -> dict:
-    return {"status": "ok", "version": settings.APP_VERSION}
+    payload: dict = {"status": "ok", "version": settings.APP_VERSION}
+    if settings.USE_TENANT_DATABASE_ROUTING:
+        from app.tenancy.metrics import snapshot as tenant_resolution_metrics
+
+        payload["tenant_resolution_metrics"] = tenant_resolution_metrics()
+    return payload
 
 
 @app.get("/")

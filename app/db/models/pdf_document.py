@@ -8,6 +8,7 @@ from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.dt import utc_now
 from app.db.base import Base
 
 if TYPE_CHECKING:
@@ -31,9 +32,9 @@ class PDFDocument(Base):
     document_type: Mapped[str] = mapped_column(String(80), nullable=False)
     file_url: Mapped[str] = mapped_column(String(1024), nullable=False)
     generated_by_id: Mapped[Any | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
-    generated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    generated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utc_now, onupdate=utc_now
     )
 
     company: Mapped["Company"] = relationship("Company", back_populates="pdf_documents")

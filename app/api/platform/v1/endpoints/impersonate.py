@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from app.config import settings
+from app.db.catalog.models import TenantRouting
 from app.db.models.company import Company
 from app.db.models.platform_user import PlatformUser
 from app.db.session import get_db
@@ -8,6 +10,7 @@ from app.dependencies import require_platform_super_admin
 from app.schemas.platform import ImpersonateRequest, PlatformUserResponse
 from app.schemas.tokens import PlatformTokenPairResponse
 from app.services.audit_service import write_audit
+from app.services.catalog_audit_service import write_catalog_audit
 from app.services.platform_auth_service import create_platform_token_pair
 
 router = APIRouter(prefix="/impersonate", tags=["platform-impersonate"])
@@ -20,6 +23,31 @@ def impersonate_company(
     db: Session = Depends(get_db),
     actor: PlatformUser = Depends(require_platform_super_admin),
 ) -> PlatformTokenPairResponse:
+    if settings.USE_TENANT_DATABASE_ROUTING:
+        row = db.query(TenantRouting).filter(TenantRouting.company_id == payload.company_id).first()
+        if not row or not row.is_active:
+            raise HTTPException(status_code=404, detail="Empresa no encontrada")
+        display = row.display_name or row.slug
+        access, refresh = create_platform_token_pair(actor, act_as_company_id=payload.company_id)
+        write_catalog_audit(
+            db,
+            actor_type="platform",
+            actor_id=str(actor.id),
+            action="platform.impersonate",
+            company_id=payload.company_id,
+            resource_type="company",
+            resource_id=str(payload.company_id),
+            metadata_json={"target_company": str(payload.company_id)},
+            ip_address=request.client.host if request.client else None,
+            detail=f"Impersonación empresa {display}",
+        )
+        db.commit()
+        return PlatformTokenPairResponse(
+            access_token=access,
+            refresh_token=refresh,
+            user=PlatformUserResponse.model_validate(actor),
+        )
+
     company = db.query(Company).filter(Company.id == payload.company_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")

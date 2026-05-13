@@ -8,6 +8,7 @@ from sqlalchemy import Boolean, DateTime, Enum as SAEnum, ForeignKey, Index, Str
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.dt import utc_now
 from app.core.enums import UserRole
 from app.db.base import Base
 
@@ -36,9 +37,9 @@ class User(Base):
     phone: Mapped[str | None] = mapped_column(String(20))
     avatar_url: Mapped[str | None] = mapped_column(String(500))
     last_login: Mapped[datetime | None] = mapped_column(DateTime)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utc_now, onupdate=utc_now
     )
     created_by_id: Mapped[Any | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 

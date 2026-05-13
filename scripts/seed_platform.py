@@ -115,9 +115,39 @@ def ensure_super_admin_only_cli() -> None:
         print("Defina PLATFORM_SUPER_PASSWORD en producción.", file=sys.stderr)
         sys.exit(1)
 
+    from app.config import settings
+    from app.db.catalog.models import CatalogPlatformUser
     from app.db.session import SessionLocal
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session, sessionmaker
 
-    db: Session = SessionLocal()
+    if settings.USE_TENANT_DATABASE_ROUTING:
+        if not settings.CATALOG_DATABASE_URL:
+            print("CATALOG_DATABASE_URL es obligatorio con USE_TENANT_DATABASE_ROUTING=true", file=sys.stderr)
+            sys.exit(1)
+        eng = create_engine(settings.CATALOG_DATABASE_URL)
+        Session = sessionmaker(autocommit=False, autoflush=False, bind=eng, class_=Session)
+        db = Session()
+        try:
+            existing = db.query(CatalogPlatformUser).filter(CatalogPlatformUser.email == super_email).first()
+            if existing:
+                print(f"Ya existe platform user (catálogo): {super_email}")
+                return
+            db.add(
+                CatalogPlatformUser(
+                    email=super_email,
+                    full_name="Super administrador",
+                    hashed_password=SecurityUtils.hash_password(super_password),
+                    role=PlatformRole.SUPER_ADMIN,
+                )
+            )
+            db.commit()
+            print(f"Creado super_admin plataforma (catálogo): {super_email}")
+        finally:
+            db.close()
+        return
+
+    db = SessionLocal()
     try:
         existing = db.query(PlatformUser).filter(PlatformUser.email == super_email).first()
         if existing:

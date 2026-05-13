@@ -14,6 +14,8 @@ from app.core.security import (
     oauth2_scheme,
     platform_oauth2_scheme,
 )
+from app.config import settings
+from app.db.catalog.models import CatalogPlatformUser
 from app.db.models.platform_user import PlatformUser
 from app.db.models.user import User
 from app.db.session import get_db
@@ -130,7 +132,8 @@ def get_current_platform_user(
         uid = UUID(str(payload.get("sub")))
     except (TypeError, ValueError):
         raise exc
-    user = db.query(PlatformUser).filter(PlatformUser.id == uid).first()
+    model = CatalogPlatformUser if settings.USE_TENANT_DATABASE_ROUTING else PlatformUser
+    user = db.query(model).filter(model.id == uid).first()
     if user is None or not user.is_active:
         raise exc
     return user

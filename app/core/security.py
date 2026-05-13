@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, Optional
 from uuid import UUID
 
@@ -7,6 +7,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 
 from app.config import settings
+from app.core.dt import utc_now
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
 platform_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/platform/v1/auth/token")
@@ -43,9 +44,9 @@ class SecurityUtils:
     ) -> str:
         to_encode = data.copy()
         if expires_delta:
-            expire = datetime.utcnow() + expires_delta
+            expire = utc_now() + expires_delta
         else:
-            expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+            expire = utc_now() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         to_encode.setdefault("token_use", TOKEN_USE_ACCESS)
         to_encode.update({"exp": expire})
         return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
@@ -53,7 +54,7 @@ class SecurityUtils:
     @staticmethod
     def create_refresh_token(data: dict[str, Any]) -> str:
         to_encode = data.copy()
-        expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        expire = utc_now() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
         to_encode.update({"exp": expire, "token_use": TOKEN_USE_REFRESH})
         return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 

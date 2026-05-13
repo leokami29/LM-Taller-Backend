@@ -8,6 +8,7 @@ from sqlalchemy import Boolean, DateTime, Enum as SAEnum, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.dt import utc_now
 from app.core.enums import PlatformRole
 from app.db.base import Base
 
@@ -26,7 +27,7 @@ class PlatformUser(Base):
         default=PlatformRole.SUPPORT_READONLY,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utc_now, onupdate=utc_now
     )

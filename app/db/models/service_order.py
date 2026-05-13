@@ -8,6 +8,7 @@ from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Index, Integer, Num
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.dt import utc_now
 from app.core.enums import CostLineCategory, OrderPriority, OrderStatus
 from app.db.base import Base
 
@@ -50,9 +51,9 @@ class ServiceOrder(Base):
     cost_parts: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
     cost_labor: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
     total_cost: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utc_now, onupdate=utc_now
     )
     created_by_id: Mapped[Any | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
@@ -86,7 +87,7 @@ class ServiceOrderTimeline(Base):
     old_status: Mapped[str | None] = mapped_column(String(32))
     new_status: Mapped[str] = mapped_column(String(32), nullable=False)
     changed_by_id: Mapped[Any | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
-    changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    changed_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     time_spent_seconds: Mapped[int | None] = mapped_column(Integer)
     notes: Mapped[str | None] = mapped_column(Text)
 
@@ -115,6 +116,6 @@ class ServiceOrderCostLine(Base):
     description: Mapped[str | None] = mapped_column(String(255))
     amount: Mapped[Any] = mapped_column(Numeric(12, 2), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     service_order: Mapped["ServiceOrder"] = relationship("ServiceOrder", back_populates="cost_lines")

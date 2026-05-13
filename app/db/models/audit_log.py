@@ -8,6 +8,7 @@ from sqlalchemy import DateTime, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.dt import utc_now
 from app.db.base import Base
 
 
@@ -27,5 +28,5 @@ class AuditLog(Base):
     resource_id: Mapped[str | None] = mapped_column(String(64))
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     ip_address: Mapped[str | None] = mapped_column(String(64))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     detail: Mapped[str | None] = mapped_column(Text)

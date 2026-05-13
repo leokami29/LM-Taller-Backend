@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
+from app.config import settings
 from app.db.models.platform_user import PlatformUser
-from app.schemas.platform import PlatformLoginRequest
-from app.schemas.platform import PlatformUserResponse
+from app.db.session import get_db
+from app.schemas.platform import PlatformLoginRequest, PlatformUserResponse
 from app.schemas.tokens import PlatformTokenPairResponse, RefreshTokenRequest
 from app.services.audit_service import write_audit
+from app.services.catalog_audit_service import write_catalog_audit
 from app.services.platform_auth_service import (
     authenticate_platform_user,
     create_platform_token_pair,
@@ -25,6 +26,26 @@ def _pair_response(user: PlatformUser, access: str, refresh: str) -> PlatformTok
     )
 
 
+def _write_platform_login_audit(db: Session, request: Request, user_id: str) -> None:
+    ip = request.client.host if request.client else None
+    if settings.USE_TENANT_DATABASE_ROUTING:
+        write_catalog_audit(
+            db,
+            actor_type="platform",
+            actor_id=user_id,
+            action="platform.login",
+            ip_address=ip,
+        )
+    else:
+        write_audit(
+            db,
+            actor_type="platform",
+            actor_id=user_id,
+            action="platform.login",
+            ip_address=ip,
+        )
+
+
 @router.post("/login", response_model=PlatformTokenPairResponse)
 def platform_login_json(
     payload: PlatformLoginRequest,
@@ -37,13 +58,7 @@ def platform_login_json(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuario desactivado")
     access, refresh = create_platform_token_pair(user)
-    write_audit(
-        db,
-        actor_type="platform",
-        actor_id=str(user.id),
-        action="platform.login",
-        ip_address=request.client.host if request.client else None,
-    )
+    _write_platform_login_audit(db, request, str(user.id))
     db.commit()
     return _pair_response(user, access, refresh)
 
@@ -60,13 +75,7 @@ def platform_login_token(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuario desactivado")
     access, refresh = create_platform_token_pair(user)
-    write_audit(
-        db,
-        actor_type="platform",
-        actor_id=str(user.id),
-        action="platform.login",
-        ip_address=request.client.host if request.client else None,
-    )
+    _write_platform_login_audit(db, request, str(user.id))
     db.commit()
     return _pair_response(user, access, refresh)
 

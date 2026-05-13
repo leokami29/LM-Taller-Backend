@@ -33,6 +33,12 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = "postgresql://sgtaller:sgtaller_password@localhost:5432/sgtaller_db"
 
+    USE_TENANT_DATABASE_ROUTING: bool = Field(default=False, validation_alias="USE_TENANT_DATABASE_ROUTING")
+    CATALOG_DATABASE_URL: Optional[str] = Field(default=None, validation_alias="CATALOG_DATABASE_URL")
+    TENANT_DATABASE_URL_MAP_JSON: str = Field(default="{}", validation_alias="TENANT_DATABASE_URL_MAP_JSON")
+    TENANT_ENGINE_CACHE_MAX: int = Field(default=24, validation_alias="TENANT_ENGINE_CACHE_MAX")
+    TENANT_RESOLVER_CACHE_TTL_SEC: int = Field(default=60, validation_alias="TENANT_RESOLVER_CACHE_TTL_SEC")
+
     REDIS_URL: str = "redis://localhost:6379"
 
     SECRET_KEY: str = "dev-secret-change-me"
@@ -57,6 +63,21 @@ class Settings(BaseSettings):
     SMTP_USER: Optional[str] = None
     SMTP_PASSWORD: Optional[str] = None
     SMTP_FROM_EMAIL: str = "noreply@sgtaller.com"
+
+    @computed_field
+    @property
+    def tenant_database_url_map(self) -> dict[str, str]:
+        """Mapa opcional company_id (UUID str) → URL de Postgres del tenant (JSON en env)."""
+        raw = self.TENANT_DATABASE_URL_MAP_JSON.strip()
+        if not raw or raw == "{}":
+            return {}
+        try:
+            data = json.loads(raw)
+            if not isinstance(data, dict):
+                return {}
+            return {str(k): str(v) for k, v in data.items()}
+        except json.JSONDecodeError:
+            return {}
 
     @computed_field
     @property

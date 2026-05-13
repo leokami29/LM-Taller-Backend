@@ -8,6 +8,7 @@ from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.dt import utc_now
 from app.db.base import Base
 
 if TYPE_CHECKING:
@@ -35,9 +36,9 @@ class Company(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     settings_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     next_order_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utc_now, onupdate=utc_now
     )
 
     users: Mapped[list["User"]] = relationship("User", back_populates="company", foreign_keys="User.company_id")
