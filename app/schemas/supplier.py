@@ -35,3 +35,4 @@ class SupplierResponse(BaseModel):
     address: Optional[str]
     payment_terms: Optional[str]
     created_at: datetime
+    updated_at: datetime

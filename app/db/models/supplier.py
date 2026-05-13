@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 class Supplier(Base):
     __tablename__ = "suppliers"
+    __table_args__ = (Index("ix_suppliers_company_id", "company_id"),)
 
     id: Mapped[Any] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     company_id: Mapped[Any] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
@@ -27,6 +28,9 @@ class Supplier(Base):
     address: Mapped[str | None] = mapped_column(Text)
     payment_terms: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
 
     company: Mapped["Company"] = relationship("Company", back_populates="suppliers")
     inventory_items: Mapped[list["InventoryItem"]] = relationship("InventoryItem", back_populates="supplier")

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,14 +18,23 @@ if TYPE_CHECKING:
 
 class PDFDocument(Base):
     __tablename__ = "pdf_documents"
+    __table_args__ = (
+        Index("ix_pdf_documents_company_id", "company_id"),
+        Index("ix_pdf_documents_service_order_id", "service_order_id"),
+    )
 
     id: Mapped[Any] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     company_id: Mapped[Any] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
-    service_order_id: Mapped[Any | None] = mapped_column(UUID(as_uuid=True), ForeignKey("service_orders.id"))
+    service_order_id: Mapped[Any | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("service_orders.id"), nullable=True
+    )
     document_type: Mapped[str] = mapped_column(String(80), nullable=False)
     file_url: Mapped[str] = mapped_column(String(1024), nullable=False)
     generated_by_id: Mapped[Any | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     generated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
 
     company: Mapped["Company"] = relationship("Company", back_populates="pdf_documents")
     service_order: Mapped["ServiceOrder | None"] = relationship("ServiceOrder")

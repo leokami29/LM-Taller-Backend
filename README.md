@@ -82,7 +82,9 @@ Los JWT de empresa incluyen `typ=tenant` y `company_id` firmado; no aceptes `com
 - Gestión de empresas: `GET/PATCH/POST /api/platform/v1/companies/...` (permisos según rol de plataforma).
 - `POST /api/platform/v1/impersonate` (solo `super_admin`): devuelve tokens con `act_as_company_id` para operar con el contexto RLS de esa empresa; queda registro en `audit_logs`.
 
-Semilla del primer super_admin: `python -m scripts.seed_platform_super_admin`.
+Semilla **solo** del super_admin (equivalente a lo mínimo de plataforma): `python -m scripts.seed_platform_super_admin`.
+
+Para **taller demo + segundo tenant + tres roles de plataforma** (recomendado para probar multi-tenant y el front `/platform`): usa `seed_demo` (abajo).
 
 ## Multi-tenant y frontend
 
@@ -114,20 +116,20 @@ Los tests recrean el esquema en cada caso (drop/create) sobre la base configurad
 
 ## Datos de demostración (frontend / Railway)
 
-Tras `alembic upgrade head`, puedes poblar Postgres con un taller de prueba (usuarios, clientes, equipos, inventario, órdenes en varios estados, timeline, PDF de ejemplo):
+Tras `alembic upgrade head`, pobla Postgres con el taller demo principal (**NIT 901-DEMO-SG**), un **segundo tenant** (**902-DEMO-SG2**, orden y datos mínimos para pruebas de aislamiento) y usuarios de **plataforma** (`super_admin`, `support_readonly`, `billing`):
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 python -m scripts.seed_demo
 ```
 
-Para **borrar y volver a crear** esa empresa demo (NIT `901-DEMO-SG`):
+Si la empresa principal ya existe, el script **no** la recrea, pero sí intenta crear el tenant secundario y asegura los usuarios de plataforma. Para **borrar y volver a crear** ambas empresas demo:
 
 ```powershell
 python -m scripts.seed_demo --force
 ```
 
-Contraseña de todos los usuarios demo: **`Demo1234`**. Cuentas útiles: `admin@demo.sgtaller.com`, `recepcion@...`, `tecnico1@...`, `visitante@...` (ver docstring en [`scripts/seed_demo.py`](scripts/seed_demo.py)).
+Contraseña de los usuarios **taller** demo: **`Demo1234`**. Usuarios **plataforma** por defecto en dev: `super@sgtaller.com` / `DevSuper1234` (y roles `support_readonly` / `billing`; ver [`scripts/seed_platform.py`](scripts/seed_platform.py) y el docstring de [`scripts/seed_demo.py`](scripts/seed_demo.py)).
 
 ## Estructura
 

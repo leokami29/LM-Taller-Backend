@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Index, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -20,7 +20,10 @@ if TYPE_CHECKING:
 
 class InventoryItem(Base):
     __tablename__ = "inventory_items"
-    __table_args__ = (UniqueConstraint("company_id", "sku", name="uq_inventory_company_sku"),)
+    __table_args__ = (
+        UniqueConstraint("company_id", "sku", name="uq_inventory_company_sku"),
+        Index("ix_inventory_items_company_id", "company_id"),
+    )
 
     id: Mapped[Any] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     company_id: Mapped[Any] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
@@ -53,6 +56,11 @@ class InventoryItem(Base):
 
 class InventoryMovement(Base):
     __tablename__ = "inventory_movements"
+    __table_args__ = (
+        Index("ix_inventory_movements_item_id", "inventory_item_id"),
+        Index("ix_inventory_movements_service_order_id", "service_order_id"),
+        Index("ix_inventory_movements_moved_at", "moved_at"),
+    )
 
     id: Mapped[Any] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     inventory_item_id: Mapped[Any] = mapped_column(UUID(as_uuid=True), ForeignKey("inventory_items.id"), nullable=False)

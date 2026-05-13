@@ -4,15 +4,26 @@ Semilla de datos de demostración para SGtaller (Postgres / Railway).
 Uso (desde la carpeta Backend, con .venv activado y DATABASE_URL en .env):
 
   python -m scripts.seed_demo
-  python -m scripts.seed_demo --force   # borra la empresa demo previa y vuelve a crear
+  python -m scripts.seed_demo --force   # borra las empresas demo (NIT 901 y 902) y vuelve a crear
 
-Credenciales de prueba (contraseña en todas: Demo1234):
+También asegura usuarios de **plataforma** (super_admin, support_readonly, billing) para probar
+`/api/platform/v1` y el panel frontend en `/platform`.
+
+Credenciales taller demo (contraseña en todas: Demo1234):
   - admin@demo.sgtaller.com     (admin)
   - recepcion@demo.sgtaller.com (reception)
   - tecnico1@demo.sgtaller.com    (technician)
   - tecnico2@demo.sgtaller.com    (technician)
   - visitante@demo.sgtaller.com   (viewer)
   - baja@demo.sgtaller.com        (viewer, cuenta inactiva)
+
+Segundo tenant (misma contraseña Demo1234) — pruebas de aislamiento entre empresas:
+  - admin.norte@demo.sgtaller.com (admin del NIT 902-DEMO-SG2)
+
+Plataforma (contraseñas por defecto en dev; ver `scripts/seed_platform.py`):
+  - super@sgtaller.com            (super_admin)  default: DevSuper1234
+  - support.readonly@demo.sgtaller.com
+  - billing@demo.sgtaller.com
 """
 from __future__ import annotations
 
@@ -20,7 +31,7 @@ import argparse
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.enums import (
@@ -40,50 +51,121 @@ from app.db.models.service_order import ServiceOrder, ServiceOrderTimeline
 from app.db.models.supplier import Supplier
 from app.db.models.user import User
 from app.db.session import SessionLocal
+from scripts.seed_platform import ensure_platform_users, platform_dev_credentials_lines
+from scripts.seed_utils import delete_company_cascade
 
 DEMO_NIT = "901-DEMO-SG"
+SECOND_DEMO_NIT = "902-DEMO-SG2"
+SECOND_COMPANY_NAME = "Taller Norte Demo SG"
 DEMO_EMAIL_DOMAIN = "demo.sgtaller.com"
 DEMO_PASSWORD = "Demo1234"
+DEMO_NITS = (DEMO_NIT, SECOND_DEMO_NIT)
 
 
-def _delete_demo_company(session: Session, company_id) -> None:
-    """Elimina en orden seguro todas las filas ligadas a la empresa demo."""
-    session.execute(delete(PDFDocument).where(PDFDocument.company_id == company_id))
+def ensure_secondary_demo_tenant(session: Session, pwd_hash: str) -> None:
+    """Segunda empresa mínima para probar multi-tenant (listados, IDOR manual, plataforma)."""
+    if session.scalar(select(Company).where(Company.nit_rut == SECOND_DEMO_NIT)):
+        print(f"  Tenant secundario ya existe (NIT {SECOND_DEMO_NIT}).")
+        return
 
-    item_ids = list(
-        session.scalars(select(InventoryItem.id).where(InventoryItem.company_id == company_id)).all()
+    company = Company(
+        name=SECOND_COMPANY_NAME,
+        nit_rut=SECOND_DEMO_NIT,
+        address="Av. Boyacá # 170, Bogotá",
+        phone="+57 601 5550200",
+        email=f"contacto.norte@{DEMO_EMAIL_DOMAIN}",
+        country="Colombia",
+        currency="COP",
+        is_active=True,
+        settings_json={"theme": "light", "locale": "es-CO", "seed": "demo-secondary"},
+        next_order_number=2,
     )
-    if item_ids:
-        session.execute(delete(InventoryMovement).where(InventoryMovement.inventory_item_id.in_(item_ids)))
+    session.add(company)
+    session.flush()
 
-    order_ids = list(
-        session.scalars(select(ServiceOrder.id).where(ServiceOrder.company_id == company_id)).all()
+    admin = User(
+        company_id=company.id,
+        email=f"admin.norte@{DEMO_EMAIL_DOMAIN}",
+        full_name="Diego Admin Norte",
+        hashed_password=pwd_hash,
+        role=UserRole.ADMIN,
+        phone="3002220001",
     )
-    if order_ids:
-        session.execute(delete(ServiceOrderTimeline).where(ServiceOrderTimeline.service_order_id.in_(order_ids)))
-        session.execute(delete(InventoryMovement).where(InventoryMovement.service_order_id.in_(order_ids)))
-        session.execute(delete(ServiceOrder).where(ServiceOrder.company_id == company_id))
+    session.add(admin)
+    session.flush()
+    admin.created_by_id = admin.id
 
-    session.execute(delete(InventoryItem).where(InventoryItem.company_id == company_id))
-    session.execute(delete(Equipment).where(Equipment.company_id == company_id))
-    session.execute(delete(Customer).where(Customer.company_id == company_id))
-    session.execute(delete(Supplier).where(Supplier.company_id == company_id))
-    session.execute(delete(User).where(User.company_id == company_id))
-    session.execute(delete(Company).where(Company.id == company_id))
-    session.commit()
+    cust = Customer(
+        company_id=company.id,
+        first_name="Cliente",
+        last_name="Norte",
+        email=f"cliente.norte@{DEMO_EMAIL_DOMAIN}",
+        phone="3102220001",
+        address="Chía",
+        identification_type=IdentificationType.CC,
+        identification_number="80112233",
+        city="Cundinamarca",
+        country="Colombia",
+        metadata_json={"tenant": "secondary-demo"},
+    )
+    session.add(cust)
+    session.flush()
+
+    eq = Equipment(
+        company_id=company.id,
+        serial_number="NORTE-EQ-001",
+        equipment_type="smartphone",
+        brand="Motorola",
+        model="Edge 40",
+        imei="356600112233445",
+        color="Azul",
+        original_owner_id=cust.id,
+        photos_urls=[],
+        additional_notes="Equipo demo tenant secundario",
+        first_received_date=datetime.utcnow().date() - timedelta(days=3),
+    )
+    session.add(eq)
+    session.flush()
+
+    order = ServiceOrder(
+        company_id=company.id,
+        order_number="NORTE-000001",
+        equipment_id=eq.id,
+        current_customer_id=cust.id,
+        problem_description="Orden mínima demo — probar aislamiento entre empresas (company_id distinto).",
+        priority=OrderPriority.LOW,
+        status=OrderStatus.RECEIVED,
+        created_by_id=admin.id,
+    )
+    session.add(order)
+    session.flush()
+
+    print(f"  Creado tenant secundario: {company.name} (NIT {SECOND_DEMO_NIT})")
+    print(f"    Admin: admin.norte@{DEMO_EMAIL_DOMAIN} / {DEMO_PASSWORD}")
 
 
 def seed_demo(*, force: bool = False) -> None:
     session = SessionLocal()
     try:
+        ensure_platform_users(session)
+
+        pwd = SecurityUtils.hash_password(DEMO_PASSWORD)
+
         existing = session.scalar(select(Company).where(Company.nit_rut == DEMO_NIT))
         if existing and not force:
             print(f"Ya existe la empresa demo (nit {DEMO_NIT}). Usa --force para borrarla y recrearla.")
+            ensure_secondary_demo_tenant(session, pwd)
+            session.commit()
+            print("Usuarios plataforma (ver scripts/seed_platform.py para variables):")
+            for line in platform_dev_credentials_lines():
+                print(line)
             return
-        if existing and force:
-            _delete_demo_company(session, existing.id)
 
-        pwd = SecurityUtils.hash_password(DEMO_PASSWORD)
+        if existing and force:
+            for nit in DEMO_NITS:
+                row = session.scalar(select(Company).where(Company.nit_rut == nit))
+                if row:
+                    delete_company_cascade(session, row.id)
 
         company = Company(
             name="Taller Central Demo SG",
@@ -686,14 +768,22 @@ def seed_demo(*, force: bool = False) -> None:
 
         company.next_order_number = max(company.next_order_number, 50)
 
+        ensure_secondary_demo_tenant(session, pwd)
+
         session.commit()
         print("Semilla demo creada correctamente.")
-        print(f"  Empresa: {company.name} (nit {DEMO_NIT})")
-        print(f"  Contraseña de todos los usuarios demo: {DEMO_PASSWORD}")
-        print("  Cuentas:")
+        print(f"  Empresa principal: {company.name} (nit {DEMO_NIT})")
+        print(f"  Empresa secundaria (multi-tenant): {SECOND_COMPANY_NAME} (nit {SECOND_DEMO_NIT})")
+        print(f"  Contraseña usuarios taller demo: {DEMO_PASSWORD}")
+        print("  Cuentas taller principal:")
         for u in (admin, recep, tech1, tech2, viewer, inactive):
             flag = "" if u.is_active else " [INACTIVA]"
             print(f"    - {u.email} ({u.role.value}){flag}")
+        print("  Cuenta taller secundario:")
+        print(f"    - admin.norte@{DEMO_EMAIL_DOMAIN} (admin)")
+        print("  Plataforma (/api/platform/v1):")
+        for line in platform_dev_credentials_lines():
+            print(line)
     finally:
         session.close()
 
@@ -703,7 +793,7 @@ def main() -> None:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Borra la empresa demo existente (mismo NIT) y la vuelve a crear.",
+        help="Borra las empresas demo (NIT 901-DEMO-SG y 902-DEMO-SG2) si existen y las vuelve a crear.",
     )
     args = parser.parse_args()
     seed_demo(force=args.force)

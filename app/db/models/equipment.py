@@ -4,7 +4,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -17,7 +17,10 @@ if TYPE_CHECKING:
 
 class Equipment(Base):
     __tablename__ = "equipment"
-    __table_args__ = (UniqueConstraint("company_id", "serial_number", name="uq_equipment_company_serial"),)
+    __table_args__ = (
+        UniqueConstraint("company_id", "serial_number", name="uq_equipment_company_serial"),
+        Index("ix_equipment_company_id", "company_id"),
+    )
 
     id: Mapped[Any] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     company_id: Mapped[Any] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)

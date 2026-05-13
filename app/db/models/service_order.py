@@ -23,6 +23,9 @@ class ServiceOrder(Base):
     __table_args__ = (
         UniqueConstraint("company_id", "order_number", name="uq_service_orders_company_order_number"),
         Index("ix_service_orders_company_status_created", "company_id", "status", "created_at"),
+        Index("ix_service_orders_equipment_id", "equipment_id"),
+        Index("ix_service_orders_current_customer_id", "current_customer_id"),
+        Index("ix_service_orders_assigned_to_id", "assigned_to_id"),
     )
 
     id: Mapped[Any] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -70,6 +73,7 @@ class ServiceOrder(Base):
 
 class ServiceOrderTimeline(Base):
     __tablename__ = "service_order_timeline"
+    __table_args__ = (Index("ix_service_order_timeline_order_id", "service_order_id"),)
 
     id: Mapped[Any] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     service_order_id: Mapped[Any] = mapped_column(UUID(as_uuid=True), ForeignKey("service_orders.id"), nullable=False)

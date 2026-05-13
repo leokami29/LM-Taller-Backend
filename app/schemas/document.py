@@ -21,3 +21,4 @@ class PDFDocumentResponse(BaseModel):
     file_url: str
     generated_by_id: Optional[UUID]
     generated_at: datetime
+    updated_at: datetime
