@@ -17,8 +17,10 @@ Credenciales taller demo (contraseña en todas: Demo1234):
   - visitante@demo.sgtaller.com   (viewer)
   - baja@demo.sgtaller.com        (viewer, cuenta inactiva)
 
-Segundo tenant (misma contraseña Demo1234) — pruebas de aislamiento entre empresas:
-  - admin.norte@demo.sgtaller.com (admin del NIT 902-DEMO-SG2)
+Segundo tenant (misma contraseña Demo1234) — datos normalizados (orden + líneas de costo, inventario, PDFs):
+  - admin.norte@demo.sgtaller.com       (admin)
+  - recepcion.norte@demo.sgtaller.com   (reception)
+  - tecnico.norte@demo.sgtaller.com     (technician)
 
 Plataforma (contraseñas por defecto en dev; ver `scripts/seed_platform.py`):
   - super@sgtaller.com            (super_admin)  default: DevSuper1234
@@ -35,7 +37,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.enums import (
-    CostLineCategory,
     IdentificationType,
     InventoryMovementType,
     OrderPriority,
@@ -48,102 +49,26 @@ from app.db.models.customer import Customer
 from app.db.models.equipment import Equipment
 from app.db.models.inventory import InventoryItem, InventoryMovement
 from app.db.models.pdf_document import PDFDocument
-from app.db.models.service_order import ServiceOrder, ServiceOrderCostLine, ServiceOrderTimeline
+from app.db.models.service_order import ServiceOrder, ServiceOrderTimeline
 from app.db.models.supplier import Supplier
 from app.db.models.user import User
 from app.db.session import SessionLocal
-from app.services.order_service import recompute_total_cost
 from scripts.seed_platform import ensure_platform_users, platform_dev_credentials_lines
 from scripts.seed_utils import delete_company_cascade
 
-DEMO_NIT = "901-DEMO-SG"
-SECOND_DEMO_NIT = "902-DEMO-SG2"
-SECOND_COMPANY_NAME = "Taller Norte Demo SG"
-DEMO_EMAIL_DOMAIN = "demo.sgtaller.com"
-DEMO_PASSWORD = "Demo1234"
-DEMO_NITS = (DEMO_NIT, SECOND_DEMO_NIT)
-
-
-def ensure_secondary_demo_tenant(session: Session, pwd_hash: str) -> None:
-    """Segunda empresa mínima para probar multi-tenant (listados, IDOR manual, plataforma)."""
-    if session.scalar(select(Company).where(Company.nit_rut == SECOND_DEMO_NIT)):
-        print(f"  Tenant secundario ya existe (NIT {SECOND_DEMO_NIT}).")
-        return
-
-    company = Company(
-        name=SECOND_COMPANY_NAME,
-        nit_rut=SECOND_DEMO_NIT,
-        address="Av. Boyacá # 170, Bogotá",
-        phone="+57 601 5550200",
-        email=f"contacto.norte@{DEMO_EMAIL_DOMAIN}",
-        country="Colombia",
-        currency="COP",
-        is_active=True,
-        settings_json={"theme": "light", "locale": "es-CO", "seed": "demo-secondary"},
-        next_order_number=2,
-    )
-    session.add(company)
-    session.flush()
-
-    admin = User(
-        company_id=company.id,
-        email=f"admin.norte@{DEMO_EMAIL_DOMAIN}",
-        full_name="Diego Admin Norte",
-        hashed_password=pwd_hash,
-        role=UserRole.ADMIN,
-        phone="3002220001",
-    )
-    session.add(admin)
-    session.flush()
-    admin.created_by_id = admin.id
-
-    cust = Customer(
-        company_id=company.id,
-        first_name="Cliente",
-        last_name="Norte",
-        email=f"cliente.norte@{DEMO_EMAIL_DOMAIN}",
-        phone="3102220001",
-        address="Chía",
-        identification_type=IdentificationType.CC,
-        identification_number="80112233",
-        city="Cundinamarca",
-        country="Colombia",
-        metadata_json={"tenant": "secondary-demo"},
-    )
-    session.add(cust)
-    session.flush()
-
-    eq = Equipment(
-        company_id=company.id,
-        serial_number="NORTE-EQ-001",
-        equipment_type="smartphone",
-        brand="Motorola",
-        model="Edge 40",
-        imei="356600112233445",
-        color="Azul",
-        original_owner_id=cust.id,
-        photos_urls=[],
-        additional_notes="Equipo demo tenant secundario",
-        first_received_date=datetime.utcnow().date() - timedelta(days=3),
-    )
-    session.add(eq)
-    session.flush()
-
-    order = ServiceOrder(
-        company_id=company.id,
-        order_number="NORTE-000001",
-        equipment_id=eq.id,
-        current_customer_id=cust.id,
-        problem_description="Orden mínima demo — probar aislamiento entre empresas (company_id distinto).",
-        priority=OrderPriority.LOW,
-        status=OrderStatus.RECEIVED,
-        created_by_id=admin.id,
-    )
-    session.add(order)
-    session.flush()
-
-    print(f"  Creado tenant secundario: {company.name} (NIT {SECOND_DEMO_NIT})")
-    print(f"    Admin: admin.norte@{DEMO_EMAIL_DOMAIN} / {DEMO_PASSWORD}")
+from scripts.seed_demo_constants import (
+    DEMO_EMAIL_DOMAIN,
+    DEMO_NIT,
+    DEMO_NITS,
+    DEMO_PASSWORD,
+    SECOND_COMPANY_NAME,
+    SECOND_DEMO_NIT,
+)
+from scripts.seed_demo_scenarios import (
+    apply_primary_extended_scenarios,
+    ensure_secondary_demodata,
+    sync_cost_lines_from_order_aggregates,
+)
 
 
 def seed_demo(*, force: bool = False) -> None:
@@ -156,7 +81,7 @@ def seed_demo(*, force: bool = False) -> None:
         existing = session.scalar(select(Company).where(Company.nit_rut == DEMO_NIT))
         if existing and not force:
             print(f"Ya existe la empresa demo (nit {DEMO_NIT}). Usa --force para borrarla y recrearla.")
-            ensure_secondary_demo_tenant(session, pwd)
+            ensure_secondary_demodata(session, pwd)
             session.commit()
             print("Usuarios plataforma (ver scripts/seed_platform.py para variables):")
             for line in platform_dev_credentials_lines():
@@ -723,32 +648,7 @@ def seed_demo(*, force: bool = False) -> None:
         session.add_all(orders)
         session.flush()
 
-        for o in orders[1:]:
-            if o.cost_parts and o.cost_parts > 0:
-                session.add(
-                    ServiceOrderCostLine(
-                        company_id=company.id,
-                        service_order_id=o.id,
-                        category=CostLineCategory.PARTS,
-                        description="Repuestos (demo)",
-                        amount=o.cost_parts,
-                        sort_order=0,
-                    )
-                )
-            if o.cost_labor and o.cost_labor > 0:
-                session.add(
-                    ServiceOrderCostLine(
-                        company_id=company.id,
-                        service_order_id=o.id,
-                        category=CostLineCategory.LABOR,
-                        description="Mano de obra (demo)",
-                        amount=o.cost_labor,
-                        sort_order=1,
-                    )
-                )
-        session.flush()
-        for o in orders[1:]:
-            recompute_total_cost(session, o)
+        sync_cost_lines_from_order_aggregates(session, company.id, orders, start_index=1)
 
         # Timeline de ejemplo en una orden con historial
         o_hist = orders[1]
@@ -795,9 +695,21 @@ def seed_demo(*, force: bool = False) -> None:
             )
         )
 
+        apply_primary_extended_scenarios(
+            session,
+            company=company,
+            orders=orders,
+            admin=admin,
+            recep=recep,
+            tech1=tech1,
+            tech2=tech2,
+            inv_battery=inv_battery,
+            inv_case=inv_case,
+        )
+
         company.next_order_number = max(company.next_order_number, 50)
 
-        ensure_secondary_demo_tenant(session, pwd)
+        ensure_secondary_demodata(session, pwd)
 
         session.commit()
         print("Semilla demo creada correctamente.")
@@ -808,8 +720,10 @@ def seed_demo(*, force: bool = False) -> None:
         for u in (admin, recep, tech1, tech2, viewer, inactive):
             flag = "" if u.is_active else " [INACTIVA]"
             print(f"    - {u.email} ({u.role.value}){flag}")
-        print("  Cuenta taller secundario:")
+        print("  Cuentas taller secundario (902):")
         print(f"    - admin.norte@{DEMO_EMAIL_DOMAIN} (admin)")
+        print(f"    - recepcion.norte@{DEMO_EMAIL_DOMAIN} (reception)")
+        print(f"    - tecnico.norte@{DEMO_EMAIL_DOMAIN} (technician)")
         print("  Plataforma (/api/platform/v1):")
         for line in platform_dev_credentials_lines():
             print(line)
