@@ -66,9 +66,30 @@ La API espera a que Postgres esté sano, aplica migraciones y levanta Uvicorn en
 
 ## Autenticación
 
-- `POST /api/v1/auth/login` (JSON: `email`, `password`).
+### Empresa (taller) — `/api/v1`
+
+- `POST /api/v1/auth/login` (JSON: `email`, `password`) devuelve `access_token`, `refresh_token` y `user`.
+- `POST /api/v1/auth/refresh` (JSON: `refresh_token`) rota el par de tokens.
 - `POST /api/v1/auth/token` (OAuth2 password flow para Swagger: `username` = email).
-- `GET /api/v1/auth/me` con cabecera `Authorization: Bearer <token>`.
+- `GET /api/v1/auth/me` con cabecera `Authorization: Bearer <access_token>`.
+
+Los JWT de empresa incluyen `typ=tenant` y `company_id` firmado; no aceptes `company_id` enviado por el cliente para filtrar datos.
+
+### Plataforma (licenciante) — `/api/platform/v1`
+
+- `POST /api/platform/v1/auth/login` y `POST /api/platform/v1/auth/token` (mismo esquema que arriba).
+- `POST /api/platform/v1/auth/refresh` con `refresh_token` de plataforma.
+- Gestión de empresas: `GET/PATCH/POST /api/platform/v1/companies/...` (permisos según rol de plataforma).
+- `POST /api/platform/v1/impersonate` (solo `super_admin`): devuelve tokens con `act_as_company_id` para operar con el contexto RLS de esa empresa; queda registro en `audit_logs`.
+
+Semilla del primer super_admin: `python -m scripts.seed_platform_super_admin`.
+
+## Multi-tenant y frontend
+
+- **Glosario**: *Tenant* = empresa que paga el SaaS (`Company`); *cliente del taller* = `Customer`; *plataforma* = equipo licenciante (`PlatformUser`).
+- **Resolución de tenant en el navegador**: conviene fijar el contexto con **subdominio** (`empresa.tudominio.com`) o **prefijo de ruta** (`/t/{slug}/...`). Tras login, guarda el `company_id` solo desde la respuesta del servidor (o dedúcelo del subdominio acordado), nunca desde un parámetro arbitrario del usuario.
+- **Tokens**: guarda `access_token` y `refresh_token` por “modo” (empresa vs plataforma) y por tenant activo. Al cambiar de empresa o de subdominio, **borra el estado** de cliente (caché, stores tipo Zustand/Redux, React Query) y vuelve a cargar datos con el nuevo token.
+- **Rutas**: el panel de plataforma debería vivir en rutas separadas (`/platform/...`) con layout y guards distintos a la app de taller (`/api/v1` vs `/api/platform/v1`).
 
 ## Semilla manual (desarrollo)
 

@@ -1,12 +1,16 @@
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.core.enums import UserRole
-from app.dependencies import ensure_not_viewer_for_mutation, get_current_admin, get_current_user
+from app.core.permissions import (
+    CUSTOMERS_DELETE,
+    CUSTOMERS_READ,
+    CUSTOMERS_WRITE,
+)
+from app.dependencies import RequirePermission, ensure_not_viewer_for_mutation
 from app.db.models.customer import Customer
 from app.db.models.user import User
 from app.db.session import get_db
@@ -21,7 +25,7 @@ def list_customers(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     search: Optional[str] = Query(None, description="Busca en nombre, apellido o email"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(RequirePermission(CUSTOMERS_READ)),
     db: Session = Depends(get_db),
 ) -> dict:
     q = db.query(Customer).filter(Customer.company_id == current_user.company_id)
@@ -42,12 +46,10 @@ def list_customers(
 @router.post("/", response_model=CustomerResponse, status_code=status.HTTP_201_CREATED)
 def create_customer(
     payload: CustomerCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(RequirePermission(CUSTOMERS_WRITE)),
     db: Session = Depends(get_db),
 ) -> Customer:
     ensure_not_viewer_for_mutation(current_user)
-    if current_user.role == UserRole.TECHNICIAN:
-        raise HTTPException(status_code=403, detail="Los técnicos no pueden crear clientes")
 
     if payload.email:
         existing = (
@@ -74,7 +76,7 @@ def create_customer(
 @router.get("/{customer_id}", response_model=CustomerResponse)
 def get_customer(
     customer_id: UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(RequirePermission(CUSTOMERS_READ)),
     db: Session = Depends(get_db),
 ) -> Customer:
     customer = (
@@ -91,12 +93,10 @@ def get_customer(
 def update_customer(
     customer_id: UUID,
     payload: CustomerUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(RequirePermission(CUSTOMERS_WRITE)),
     db: Session = Depends(get_db),
 ) -> Customer:
     ensure_not_viewer_for_mutation(current_user)
-    if current_user.role == UserRole.TECHNICIAN:
-        raise HTTPException(status_code=403, detail="Los técnicos no pueden editar clientes")
 
     customer = (
         db.query(Customer)
@@ -132,12 +132,12 @@ def update_customer(
 @router.delete("/{customer_id}", status_code=status.HTTP_200_OK)
 def delete_customer(
     customer_id: UUID,
-    admin: User = Depends(get_current_admin),
+    current_user: User = Depends(RequirePermission(CUSTOMERS_DELETE)),
     db: Session = Depends(get_db),
 ) -> dict:
     customer = (
         db.query(Customer)
-        .filter(Customer.id == customer_id, Customer.company_id == admin.company_id)
+        .filter(Customer.id == customer_id, Customer.company_id == current_user.company_id)
         .first()
     )
     if not customer:

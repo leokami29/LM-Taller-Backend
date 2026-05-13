@@ -5,14 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.core.enums import UserRole
 from app.core.exceptions import InsufficientStockError
-from app.dependencies import (
-    ensure_not_viewer_for_mutation,
-    get_current_admin,
-    get_current_technician_or_admin,
-    get_current_user,
+from app.core.permissions import (
+    INVENTORY_DELETE,
+    INVENTORY_READ,
+    INVENTORY_STOCK,
+    INVENTORY_WRITE,
 )
+from app.dependencies import RequirePermission, ensure_not_viewer_for_mutation
 from app.db.models.inventory import InventoryItem, InventoryMovement
 from app.db.models.service_order import ServiceOrder
 from app.db.models.supplier import Supplier
@@ -37,7 +37,7 @@ def list_inventory(
     limit: int = Query(50, ge=1, le=100),
     search: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(RequirePermission(INVENTORY_READ)),
     db: Session = Depends(get_db),
 ) -> dict:
     q = db.query(InventoryItem).filter(InventoryItem.company_id == current_user.company_id)
@@ -54,12 +54,10 @@ def list_inventory(
 @router.post("/", response_model=InventoryItemResponse, status_code=status.HTTP_201_CREATED)
 def create_inventory_item(
     payload: InventoryItemCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(RequirePermission(INVENTORY_WRITE)),
     db: Session = Depends(get_db),
 ) -> InventoryItem:
     ensure_not_viewer_for_mutation(current_user)
-    if current_user.role == UserRole.TECHNICIAN:
-        raise HTTPException(status_code=403, detail="Los técnicos no pueden crear ítems de inventario")
 
     exists = (
         db.query(InventoryItem)
@@ -94,7 +92,7 @@ def create_inventory_item(
 @router.get("/{item_id}", response_model=InventoryItemResponse)
 def get_inventory_item(
     item_id: UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(RequirePermission(INVENTORY_READ)),
     db: Session = Depends(get_db),
 ) -> InventoryItem:
     item = (
@@ -111,12 +109,10 @@ def get_inventory_item(
 def update_inventory_item(
     item_id: UUID,
     payload: InventoryItemUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(RequirePermission(INVENTORY_WRITE)),
     db: Session = Depends(get_db),
 ) -> InventoryItem:
     ensure_not_viewer_for_mutation(current_user)
-    if current_user.role == UserRole.TECHNICIAN:
-        raise HTTPException(status_code=403, detail="Los técnicos no pueden editar metadatos de inventario")
 
     item = (
         db.query(InventoryItem)
@@ -162,12 +158,12 @@ def update_inventory_item(
 @router.delete("/{item_id}")
 def delete_inventory_item(
     item_id: UUID,
-    admin: User = Depends(get_current_admin),
+    current_user: User = Depends(RequirePermission(INVENTORY_DELETE)),
     db: Session = Depends(get_db),
 ) -> dict:
     item = (
         db.query(InventoryItem)
-        .filter(InventoryItem.id == item_id, InventoryItem.company_id == admin.company_id)
+        .filter(InventoryItem.id == item_id, InventoryItem.company_id == current_user.company_id)
         .first()
     )
     if not item:
@@ -182,7 +178,7 @@ def adjust_stock(
     item_id: UUID,
     payload: InventoryStockChange,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_technician_or_admin),
+    user: User = Depends(RequirePermission(INVENTORY_STOCK)),
 ) -> InventoryMovement:
     item = (
         db.query(InventoryItem)

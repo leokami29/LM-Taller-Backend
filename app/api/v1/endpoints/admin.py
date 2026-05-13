@@ -4,8 +4,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.permissions import ADMIN_USERS
 from app.core.security import SecurityUtils
-from app.dependencies import get_current_admin
+from app.dependencies import RequirePermission
 from app.db.models.user import User
 from app.db.session import get_db
 from app.schemas.user import UserAdminCreate, UserPasswordUpdate, UserResponse, UserUpdate
@@ -16,7 +17,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 @router.get("/users", response_model=List[UserResponse])
 def list_company_users(
     db: Session = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(RequirePermission(ADMIN_USERS)),
 ) -> List[User]:
     return db.query(User).filter(User.company_id == admin.company_id).order_by(User.created_at.desc()).all()
 
@@ -25,7 +26,7 @@ def list_company_users(
 def create_company_user(
     payload: UserAdminCreate,
     db: Session = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(RequirePermission(ADMIN_USERS)),
 ) -> User:
     exists = (
         db.query(User)
@@ -55,7 +56,7 @@ def update_company_user(
     user_id: UUID,
     payload: UserUpdate,
     db: Session = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(RequirePermission(ADMIN_USERS)),
 ) -> User:
     user = (
         db.query(User)
@@ -79,7 +80,7 @@ def reset_user_password(
     user_id: UUID,
     payload: UserPasswordUpdate,
     db: Session = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(RequirePermission(ADMIN_USERS)),
 ) -> User:
     user = (
         db.query(User)

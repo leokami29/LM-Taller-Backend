@@ -7,14 +7,14 @@ from sqlalchemy.orm import Session
 
 from app.core.enums import OrderPriority, OrderStatus, UserRole
 from app.core.exceptions import InvalidOrderTransitionError
-from app.dependencies import (
-    ensure_not_viewer_for_mutation,
-    get_current_admin,
-    get_current_technician_or_admin,
-    get_current_user,
+from app.core.permissions import (
+    ORDERS_DELETE,
+    ORDERS_READ,
+    ORDERS_STATUS,
+    ORDERS_WRITE,
 )
+from app.dependencies import RequirePermission, ensure_not_viewer_for_mutation
 from app.db.models.customer import Customer
-from app.db.models.equipment import Equipment
 from app.db.models.service_order import ServiceOrder
 from app.db.models.user import User
 from app.db.session import get_db
@@ -41,7 +41,7 @@ def list_orders(
     status_filter: Optional[OrderStatus] = Query(None, alias="status"),
     priority: Optional[OrderPriority] = Query(None),
     search: Optional[str] = Query(None, description="Número de orden o descripción"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(RequirePermission(ORDERS_READ)),
     db: Session = Depends(get_db),
 ) -> dict:
     q = db.query(ServiceOrder).filter(ServiceOrder.company_id == current_user.company_id)
@@ -62,12 +62,10 @@ def list_orders(
 @router.post("/", response_model=ServiceOrderResponse, status_code=status.HTTP_201_CREATED)
 def create_order(
     payload: ServiceOrderCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(RequirePermission(ORDERS_WRITE)),
     db: Session = Depends(get_db),
 ) -> ServiceOrder:
     ensure_not_viewer_for_mutation(current_user)
-    if current_user.role == UserRole.TECHNICIAN:
-        raise HTTPException(status_code=403, detail="Los técnicos no pueden crear órdenes")
 
     try:
         order = create_service_order(
@@ -91,7 +89,7 @@ def create_order(
 @router.get("/{order_id}", response_model=ServiceOrderResponse)
 def get_order(
     order_id: UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(RequirePermission(ORDERS_READ)),
     db: Session = Depends(get_db),
 ) -> ServiceOrder:
     order = (
@@ -108,7 +106,7 @@ def get_order(
 def update_order(
     order_id: UUID,
     payload: ServiceOrderUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(RequirePermission(ORDERS_WRITE)),
     db: Session = Depends(get_db),
 ) -> ServiceOrder:
     ensure_not_viewer_for_mutation(current_user)
@@ -177,7 +175,7 @@ def patch_order_status(
     order_id: UUID,
     payload: ServiceOrderStatusPatch,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_technician_or_admin),
+    user: User = Depends(RequirePermission(ORDERS_STATUS)),
 ) -> ServiceOrder:
     order = (
         db.query(ServiceOrder)
@@ -206,12 +204,12 @@ def patch_order_status(
 @router.delete("/{order_id}")
 def delete_order(
     order_id: UUID,
-    admin: User = Depends(get_current_admin),
+    current_user: User = Depends(RequirePermission(ORDERS_DELETE)),
     db: Session = Depends(get_db),
 ) -> dict:
     order = (
         db.query(ServiceOrder)
-        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == admin.company_id)
+        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
         .first()
     )
     if not order:

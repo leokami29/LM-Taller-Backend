@@ -4,9 +4,10 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.core.permissions import ANALYTICS_READ
 from app.db.models.user import User
 from app.db.session import get_db
-from app.dependencies import get_current_user
+from app.dependencies import RequirePermission
 from app.services.analytics_service import orders_metrics, technicians_performance
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
@@ -16,7 +17,7 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 def get_orders_metrics(
     date_from: Optional[datetime] = Query(None),
     date_to: Optional[datetime] = Query(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(RequirePermission(ANALYTICS_READ)),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     return orders_metrics(
@@ -31,7 +32,7 @@ def get_orders_metrics(
 def get_technicians_performance(
     date_from: Optional[datetime] = Query(None),
     date_to: Optional[datetime] = Query(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(RequirePermission(ANALYTICS_READ)),
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
     return technicians_performance(

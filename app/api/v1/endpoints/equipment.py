@@ -6,8 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.core.enums import UserRole
-from app.dependencies import ensure_not_viewer_for_mutation, get_current_admin, get_current_user
+from app.core.permissions import (
+    EQUIPMENT_DELETE,
+    EQUIPMENT_READ,
+    EQUIPMENT_WRITE,
+)
+from app.dependencies import RequirePermission, ensure_not_viewer_for_mutation
 from app.db.models.customer import Customer
 from app.db.models.equipment import Equipment
 from app.db.models.user import User
@@ -24,7 +28,7 @@ def list_equipment(
     limit: int = Query(50, ge=1, le=100),
     search: Optional[str] = Query(None),
     brand: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(RequirePermission(EQUIPMENT_READ)),
     db: Session = Depends(get_db),
 ) -> dict:
     q = db.query(Equipment).filter(Equipment.company_id == current_user.company_id)
@@ -47,12 +51,10 @@ def list_equipment(
 @router.post("/", response_model=EquipmentResponse, status_code=status.HTTP_201_CREATED)
 def create_equipment(
     payload: EquipmentCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(RequirePermission(EQUIPMENT_WRITE)),
     db: Session = Depends(get_db),
 ) -> Equipment:
     ensure_not_viewer_for_mutation(current_user)
-    if current_user.role == UserRole.TECHNICIAN:
-        raise HTTPException(status_code=403, detail="Los técnicos no pueden crear equipos")
 
     exists = (
         db.query(Equipment)
@@ -89,7 +91,7 @@ def create_equipment(
 @router.get("/{equipment_id}", response_model=EquipmentResponse)
 def get_equipment(
     equipment_id: UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(RequirePermission(EQUIPMENT_READ)),
     db: Session = Depends(get_db),
 ) -> Equipment:
     eq = (
@@ -106,12 +108,10 @@ def get_equipment(
 def update_equipment(
     equipment_id: UUID,
     payload: EquipmentUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(RequirePermission(EQUIPMENT_WRITE)),
     db: Session = Depends(get_db),
 ) -> Equipment:
     ensure_not_viewer_for_mutation(current_user)
-    if current_user.role == UserRole.TECHNICIAN:
-        raise HTTPException(status_code=403, detail="Los técnicos no pueden editar equipos")
 
     eq = (
         db.query(Equipment)
@@ -159,12 +159,12 @@ def update_equipment(
 @router.delete("/{equipment_id}")
 def delete_equipment(
     equipment_id: UUID,
-    admin: User = Depends(get_current_admin),
+    current_user: User = Depends(RequirePermission(EQUIPMENT_DELETE)),
     db: Session = Depends(get_db),
 ) -> dict:
     eq = (
         db.query(Equipment)
-        .filter(Equipment.id == equipment_id, Equipment.company_id == admin.company_id)
+        .filter(Equipment.id == equipment_id, Equipment.company_id == current_user.company_id)
         .first()
     )
     if not eq:

@@ -1,4 +1,5 @@
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -9,6 +10,7 @@ from app.core.security import SecurityUtils
 from app.db.base import Base
 from app.db.models.company import Company
 from app.db.models.user import User
+from app.db.rls import apply_rls_session_context
 from app.db.session import get_db
 from app.main import app
 
@@ -36,7 +38,8 @@ def db_session(engine):
 
 @pytest.fixture
 def client(db_session):
-    def _override_get_db():
+    def _override_get_db(request: Request):
+        apply_rls_session_context(db_session, request.headers.get("Authorization"))
         try:
             yield db_session
         finally:

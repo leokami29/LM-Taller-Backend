@@ -8,6 +8,14 @@ class UserRole(str, Enum):
     VIEWER = "viewer"
 
 
+class PlatformRole(str, Enum):
+    """Roles del equipo licenciante (acceso global a la plataforma)."""
+
+    SUPER_ADMIN = "super_admin"
+    SUPPORT_READONLY = "support_readonly"
+    BILLING = "billing"
+
+
 class OrderStatus(str, Enum):
     RECEIVED = "received"
     DIAGNOSING = "diagnosing"
