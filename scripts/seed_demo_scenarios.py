@@ -7,11 +7,14 @@ Escenarios de semilla demo alineados con el esquema normalizado (líneas de cost
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from decimal import Decimal
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from app.core.dt import utc_now
 
 from app.core.enums import (
     CostLineCategory,
@@ -157,17 +160,26 @@ def apply_primary_extended_scenarios(
     )
 
 
-def ensure_secondary_demodata(session: Session, pwd_hash: str) -> None:
+def ensure_secondary_demodata(
+    session: Session,
+    pwd_hash: str,
+    *,
+    fixed_company_id: UUID | None = None,
+) -> None:
     """
     Segundo tenant con el mismo patrón normalizado: proveedor, ítems, movimientos,
     orden ORD-000001 con líneas de costo, timeline, consumo used_in_repair con orden, PDFs.
     Idempotente: si el NIT 902 ya existe, no duplica.
     """
-    if session.scalar(select(Company).where(Company.nit_rut == SECOND_DEMO_NIT)):
+    if fixed_company_id is not None:
+        if session.scalar(select(Company).where(Company.id == fixed_company_id)):
+            print(f"  Tenant secundario ya existe (company_id {fixed_company_id}).")
+            return
+    elif session.scalar(select(Company).where(Company.nit_rut == SECOND_DEMO_NIT)):
         print(f"  Tenant secundario ya existe (NIT {SECOND_DEMO_NIT}).")
         return
 
-    company = Company(
+    company_kw = dict(
         name=SECOND_COMPANY_NAME,
         nit_rut=SECOND_DEMO_NIT,
         address="Av. Boyacá # 170, Bogotá",
@@ -179,6 +191,9 @@ def ensure_secondary_demodata(session: Session, pwd_hash: str) -> None:
         settings_json={"theme": "light", "locale": "es-CO", "seed": "demo-secondary-v2"},
         next_order_number=1,
     )
+    if fixed_company_id is not None:
+        company_kw["id"] = fixed_company_id
+    company = Company(**company_kw)
     session.add(company)
     session.flush()
 
@@ -297,7 +312,7 @@ def ensure_secondary_demodata(session: Session, pwd_hash: str) -> None:
         original_owner_id=cust.id,
         photos_urls=[],
         additional_notes="Equipo demo tenant secundario",
-        first_received_date=datetime.utcnow().date() - timedelta(days=3),
+        first_received_date=utc_now().date() - timedelta(days=3),
     )
     session.add(eq)
     session.flush()
@@ -312,7 +327,7 @@ def ensure_secondary_demodata(session: Session, pwd_hash: str) -> None:
         assigned_to_id=tech.id,
         problem_description="Pantalla con líneas verticales tras caída (demo multi-tenant).",
         diagnosis_notes="Matriz OK; revisar flex y conector.",
-        estimated_completion=datetime.utcnow() + timedelta(days=2),
+        estimated_completion=utc_now() + timedelta(days=2),
         cost_parts=Decimal("95000"),
         cost_labor=Decimal("60000"),
         total_cost=Decimal("155000"),

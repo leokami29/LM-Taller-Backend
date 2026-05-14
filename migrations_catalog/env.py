@@ -1,6 +1,13 @@
 """Entorno Alembic para el catálogo (control plane)."""
 
 from logging.config import fileConfig
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Cargar Backend/.env antes de settings (Alembic a veces se ejecuta con cwd distinto).
+_backend_root = Path(__file__).resolve().parents[1]
+load_dotenv(_backend_root / ".env")
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
@@ -33,7 +40,11 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     if not url:
-        raise RuntimeError("CATALOG_DATABASE_URL debe estar definido para migraciones del catálogo")
+        raise RuntimeError(
+            "CATALOG_DATABASE_URL debe estar definido para migraciones del catálogo. "
+            f"Añádelo en {_backend_root / '.env'} (URL del Postgres catálogo; desde fuera de Railway suele "
+            "llevar ?sslmode=require) o exporta la variable en la shell antes de ejecutar Alembic."
+        )
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",

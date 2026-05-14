@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core.enums import PlatformRole
 from app.core.security import SecurityUtils
+from app.db.catalog.models import CatalogPlatformUser
 from app.db.models.platform_user import PlatformUser
 
 
@@ -47,6 +48,68 @@ def _ensure_user(
     )
     session.flush()
     print(f"  [plataforma] Creado: {email} ({role.value})")
+
+
+def _ensure_catalog_user(
+    session: Session,
+    *,
+    email: str,
+    full_name: str,
+    role: PlatformRole,
+    password: str,
+) -> None:
+    existing = session.query(CatalogPlatformUser).filter(CatalogPlatformUser.email == email).first()
+    if existing:
+        print(f"  [plataforma/catálogo] Ya existe: {email} ({existing.role.value})")
+        return
+    session.add(
+        CatalogPlatformUser(
+            email=email,
+            full_name=full_name,
+            hashed_password=SecurityUtils.hash_password(password),
+            role=role,
+        )
+    )
+    session.flush()
+    print(f"  [plataforma/catálogo] Creado: {email} ({role.value})")
+
+
+def ensure_platform_users_catalog(session: Session) -> None:
+    """Igual que ensure_platform_users pero en BD catálogo (routing multi-tenant). Hace commit."""
+    super_email = _pw("PLATFORM_SUPER_EMAIL", "super@sgtaller.com")
+    super_password = _pw("PLATFORM_SUPER_PASSWORD", "DevSuper1234")
+    roles_password = _pw("PLATFORM_ROLES_PASSWORD", super_password)
+    support_email = _pw("PLATFORM_SUPPORT_EMAIL", "support.readonly@demo.sgtaller.com")
+    support_password = _pw("PLATFORM_SUPPORT_PASSWORD", roles_password)
+    billing_email = _pw("PLATFORM_BILLING_EMAIL", "billing@demo.sgtaller.com")
+    billing_password = _pw("PLATFORM_BILLING_PASSWORD", roles_password)
+
+    if os.environ.get("ENV") == "production" and super_password == "DevSuper1234":
+        print("Refuse: en producción defina PLATFORM_SUPER_PASSWORD.", file=sys.stderr)
+        sys.exit(1)
+
+    _ensure_catalog_user(
+        session,
+        email=super_email,
+        full_name="Super administrador (seed)",
+        role=PlatformRole.SUPER_ADMIN,
+        password=super_password,
+    )
+    _ensure_catalog_user(
+        session,
+        email=support_email,
+        full_name="Soporte solo lectura (seed)",
+        role=PlatformRole.SUPPORT_READONLY,
+        password=support_password,
+    )
+    _ensure_catalog_user(
+        session,
+        email=billing_email,
+        full_name="Facturación (seed)",
+        role=PlatformRole.BILLING,
+        password=billing_password,
+    )
+    session.commit()
 
 
 def ensure_platform_users(session: Session) -> None:
@@ -116,7 +179,6 @@ def ensure_super_admin_only_cli() -> None:
         sys.exit(1)
 
     from app.config import settings
-    from app.db.catalog.models import CatalogPlatformUser
     from app.db.session import SessionLocal
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session, sessionmaker

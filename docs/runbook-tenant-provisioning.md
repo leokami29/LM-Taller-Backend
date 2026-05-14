@@ -11,7 +11,7 @@
 1. Generar `company_id` (UUID) coherente entre catálogo y data plane (la API de plataforma lo hace al crear empresa con routing activo).
 2. Insertar fila en `tenant_routing` (slug único, `database_url`, columnas denormalizadas para listados).
 3. Ejecutar seed de datos mínimos en la BD del tenant si aplica.
-4. `python -m scripts.seed_platform_super_admin` contra el **catálogo** si aún no hay `platform_users`.
+4. `python -m scripts.seed_platform_super_admin` contra el **catálogo** si aún no hay `platform_users`, o `python -m scripts.seed_demo` con routing activo (semilla catálogo + `tenant_routing` + ambas BDs tenant según `TENANT_DATABASE_URL_MAP_JSON`).
 5. Smoke: login tenant con `tenant_slug` + email + contraseña; login plataforma en `/api/platform/v1/auth/login`.
 
 ## Objetivo de tiempo (definir con negocio)
