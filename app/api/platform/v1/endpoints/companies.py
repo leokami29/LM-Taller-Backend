@@ -7,11 +7,11 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
 from app.core.dt import utc_now
-from app.core.enums import UserRole
+from app.core.enums import SubscriptionStatus, UserRole
 from app.core.permissions import PLATFORM_COMPANIES_READ, PLATFORM_COMPANIES_WRITE
 from app.core.security import SecurityUtils
 from app.dependencies import RequirePlatformPermission
-from app.db.catalog.models import TenantRouting
+from app.db.catalog.models import Plan, Subscription, TenantRouting
 from app.db.models.company import Company
 from app.db.models.platform_user import PlatformUser
 from app.db.models.user import User
@@ -21,7 +21,31 @@ from app.schemas.platform import PlatformCompanyCreate, PlatformCompanyResponse,
 router = APIRouter(prefix="/companies", tags=["platform-companies"])
 
 
-def _routing_row_to_response(row: TenantRouting) -> PlatformCompanyResponse:
+def _tenant_company_to_response(c: Company) -> PlatformCompanyResponse:
+    return PlatformCompanyResponse(
+        id=c.id,
+        name=c.name,
+        nit_rut=c.nit_rut,
+        address=c.address,
+        phone=c.phone,
+        email=c.email,
+        country=c.country,
+        currency=c.currency,
+        is_active=c.is_active,
+        created_at=c.created_at,
+        plan_code=c.plan.value,
+        subscription_status=c.subscription_status,
+        subscription_billing_email=c.billing_email,
+    )
+
+
+def _routing_row_to_response(
+    row: TenantRouting,
+    *,
+    plan_code: str | None = None,
+    subscription_status: SubscriptionStatus | None = None,
+    subscription_billing_email: str | None = None,
+) -> PlatformCompanyResponse:
     return PlatformCompanyResponse(
         id=row.company_id,
         name=row.display_name or row.slug,
@@ -33,6 +57,9 @@ def _routing_row_to_response(row: TenantRouting) -> PlatformCompanyResponse:
         currency=row.currency or "COP",
         is_active=row.is_active,
         created_at=row.company_created_at or utc_now(),
+        plan_code=plan_code,
+        subscription_status=subscription_status,
+        subscription_billing_email=subscription_billing_email,
     )
 
 
@@ -42,14 +69,24 @@ def list_companies(
     _user: PlatformUser = Depends(RequirePlatformPermission(PLATFORM_COMPANIES_READ)),
 ) -> List[PlatformCompanyResponse]:
     if settings.USE_TENANT_DATABASE_ROUTING:
-        rows = (
-            db.query(TenantRouting)
+        fetched = (
+            db.query(TenantRouting, Plan.code, Subscription.status, Subscription.billing_email)
+            .outerjoin(Subscription, Subscription.company_id == TenantRouting.company_id)
+            .outerjoin(Plan, Plan.id == Subscription.plan_id)
             .order_by(TenantRouting.company_created_at.desc().nulls_last(), TenantRouting.slug)
             .all()
         )
-        return [_routing_row_to_response(r) for r in rows]
+        return [
+            _routing_row_to_response(
+                r,
+                plan_code=pcode,
+                subscription_status=st,
+                subscription_billing_email=b_email,
+            )
+            for r, pcode, st, b_email in fetched
+        ]
     companies = db.query(Company).order_by(Company.created_at.desc()).all()
-    return [PlatformCompanyResponse.model_validate(c) for c in companies]
+    return [_tenant_company_to_response(c) for c in companies]
 
 
 @router.get("/{company_id}", response_model=PlatformCompanyResponse)
@@ -69,13 +106,13 @@ def get_company(
             c = tdb.query(Company).filter(Company.id == company_id).first()
             if not c:
                 raise HTTPException(status_code=404, detail="Empresa no encontrada en data plane")
-            return PlatformCompanyResponse.model_validate(c)
+            return _tenant_company_to_response(c)
         finally:
             tdb.close()
     c = db.query(Company).filter(Company.id == company_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
-    return PlatformCompanyResponse.model_validate(c)
+    return _tenant_company_to_response(c)
 
 
 @router.patch("/{company_id}", response_model=PlatformCompanyResponse)
@@ -113,7 +150,7 @@ def patch_company(
             db.add(row)
             db.commit()
             db.refresh(row)
-            return PlatformCompanyResponse.model_validate(c)
+            return _tenant_company_to_response(c)
         finally:
             tdb.close()
     c = db.query(Company).filter(Company.id == company_id).first()
@@ -125,7 +162,7 @@ def patch_company(
     db.add(c)
     db.commit()
     db.refresh(c)
-    return PlatformCompanyResponse.model_validate(c)
+    return _tenant_company_to_response(c)
 
 
 @router.post("/", response_model=PlatformCompanyResponse, status_code=status.HTTP_201_CREATED)
@@ -241,4 +278,4 @@ def create_company_with_admin(
     db.add(admin)
     db.commit()
     db.refresh(company)
-    return PlatformCompanyResponse.model_validate(company)
+    return _tenant_company_to_response(company)

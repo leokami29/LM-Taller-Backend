@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.core.enums import PlatformRole
+from app.core.enums import PlatformRole, SubscriptionStatus
 
 
 class PlatformUserResponse(BaseModel):
@@ -59,6 +59,10 @@ class PlatformCompanyResponse(BaseModel):
     currency: str
     is_active: bool
     created_at: datetime
+    # Suscripción / facturación (catálogo o fila tenant; opcional si aún no sincronizada)
+    plan_code: Optional[str] = None
+    subscription_status: Optional[SubscriptionStatus] = None
+    subscription_billing_email: Optional[str] = None
 
 
 class ImpersonateRequest(BaseModel):
