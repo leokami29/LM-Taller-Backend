@@ -23,11 +23,41 @@ copy .env.example .env
 # Edita .env con tu DATABASE_URL (p. ej. Railway)
 # Opcional en local:
 # docker compose up -d postgres
-python -m alembic upgrade head
+python -m scripts.migrate tenant
+# Si usas catálogo separado (USE_TENANT_DATABASE_ROUTING + CATALOG_DATABASE_URL):
+# python -m scripts.migrate catalog
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+Equivalente manual: `python -m alembic upgrade head` (tenant) y `python -m alembic -c alembic_catalog.ini upgrade head` (catálogo). **No** uses `migrations_catalog/alembic.ini` (no existe); el archivo es `alembic_catalog.ini` en la raíz de `Backend`.
+
+Con **`USE_TENANT_DATABASE_ROUTING=true`** y `DATABASE_URL` igual a `CATALOG_DATABASE_URL` (solo catálogo para rutas globales): migrá cada taller con  
+`python -m scripts.migrate_all_tenant_databases --from-env-map` — este comando **carga `Backend/.env` solo** y no necesitás exportar `TENANT_DATABASE_URL_MAP_JSON` en PowerShell. Opción todo-en-uno: `python -m scripts.migrate all`.
+
 Si ves `No module named alembic`, casi siempre es que no activaste el venv o no corriste `pip install -r requirements.txt` en ese mismo Python.
+
+### Error `Can't locate revision identified by 'catalog_001'`
+
+Significa que la base apuntada por `DATABASE_URL` tiene en `alembic_version` una revisión del **catálogo**, no del tenant. Suele pasar si `DATABASE_URL` y `CATALOG_DATABASE_URL` apuntan a la misma BD o si corriste migraciones de catálogo contra la BD del taller.
+
+```powershell
+python -m scripts.migrate diagnose
+```
+
+No hagas `alembic stamp` sobre la BD **catálogo** si `DATABASE_URL` es intencionalmente la misma que `CATALOG_DATABASE_URL`; ahí la versión `catalog_*` es correcta.
+
+Si la BD tenant quedó mal etiquetada (ya tiene tablas de app pero versión `catalog_001`):
+
+```powershell
+python -m alembic stamp 009_customer_search_idx
+python -m scripts.migrate tenant
+```
+
+Luego, en la BD **catálogo** (con `CATALOG_DATABASE_URL` en `.env`):
+
+```powershell
+python -m scripts.migrate catalog
+```
 
 Documentación interactiva: `http://localhost:8000/docs`
 

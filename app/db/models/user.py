@@ -14,6 +14,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.db.models.company import Company
+    from app.db.models.rbac import UserSiteRole
     from app.db.models.service_order import ServiceOrder
 
 
@@ -55,4 +56,9 @@ class User(Base):
         "ServiceOrder",
         foreign_keys="ServiceOrder.created_by_id",
         back_populates="created_by",
+    )
+    site_roles: Mapped[list["UserSiteRole"]] = relationship(
+        "UserSiteRole",
+        back_populates="user",
+        foreign_keys="UserSiteRole.user_id",
     )

@@ -29,6 +29,7 @@ from app.schemas.service_order import (
     ServiceOrderStatusPatch,
     ServiceOrderUpdate,
 )
+from app.services.permission_service import PermissionService
 from app.services.order_service import (
     add_cost_line,
     change_order_status,
@@ -80,6 +81,9 @@ def create_order(
     db: Session = Depends(get_db),
 ) -> ServiceOrder:
     ensure_not_viewer_for_mutation(current_user)
+    ok, reason = PermissionService(db).can_create_order(current_user.company_id)
+    if not ok:
+        raise HTTPException(status_code=403, detail=reason)
 
     try:
         order = create_service_order(

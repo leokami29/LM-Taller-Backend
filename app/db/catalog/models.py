@@ -4,12 +4,12 @@ from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, Enum as SAEnum, Index, String, Text
+from sqlalchemy import Boolean, DateTime, Enum as SAEnum, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.dt import utc_now
-from app.core.enums import PlatformRole
+from app.core.enums import PlatformRole, SubscriptionStatus
 from app.db.catalog.base import CatalogBase
 
 
@@ -76,3 +76,50 @@ class CatalogAuditLog(CatalogBase):
     ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class FeatureCatalog(CatalogBase):
+    __tablename__ = "feature_catalog"
+
+    code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, default="module")
+
+
+class Plan(CatalogBase):
+    __tablename__ = "plans"
+
+    id: Mapped[Any] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    code: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class PlanEntitlement(CatalogBase):
+    __tablename__ = "plan_entitlements"
+    __table_args__ = (UniqueConstraint("plan_id", "feature_code", name="uq_plan_entitlement"),)
+
+    id: Mapped[Any] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    plan_id: Mapped[Any] = mapped_column(UUID(as_uuid=True), ForeignKey("plans.id"), nullable=False)
+    feature_code: Mapped[str] = mapped_column(String(64), ForeignKey("feature_catalog.code"), nullable=False)
+    value_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+
+
+class Subscription(CatalogBase):
+    __tablename__ = "subscriptions"
+    __table_args__ = (Index("ix_subscriptions_company", "company_id"),)
+
+    id: Mapped[Any] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[Any] = mapped_column(UUID(as_uuid=True), unique=True, nullable=False)
+    plan_id: Mapped[Any] = mapped_column(UUID(as_uuid=True), ForeignKey("plans.id"), nullable=False)
+    status: Mapped[SubscriptionStatus] = mapped_column(
+        SAEnum(SubscriptionStatus, values_callable=lambda x: [e.value for e in x], native_enum=False),
+        default=SubscriptionStatus.ACTIVE,
+    )
+    current_period_end: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    provider: Mapped[str] = mapped_column(String(16), default="manual")
+    provider_subscription_id: Mapped[str | None] = mapped_column(String(128))
+    entitlements_override_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    billing_email: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)

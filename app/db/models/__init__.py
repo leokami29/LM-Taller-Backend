@@ -1,5 +1,6 @@
 from app.db.models.audit_log import AuditLog
 from app.db.models.company import Company
+from app.db.models.rbac import RoleChangeRequest, Site, TemporaryPermission, UserSiteRole
 from app.db.models.customer import Customer
 from app.db.models.equipment import Equipment
 from app.db.models.inventory import InventoryItem, InventoryMovement
@@ -14,6 +15,10 @@ __all__ = [
     "User",
     "PlatformUser",
     "AuditLog",
+    "Site",
+    "UserSiteRole",
+    "RoleChangeRequest",
+    "TemporaryPermission",
     "Customer",
     "Equipment",
     "ServiceOrder",

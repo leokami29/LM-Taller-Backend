@@ -55,3 +55,22 @@ class IdentificationType(str, Enum):
     RUT = "RUT"
     PASSPORT = "Passport"
     CEDULA_EXTRANJERIA = "Cédula Extranjería"
+
+
+class PlanTier(str, Enum):
+    STARTER = "starter"
+    PRO = "pro"
+    ENTERPRISE = "enterprise"
+
+
+class SubscriptionStatus(str, Enum):
+    ACTIVE = "active"
+    TRIAL = "trial"
+    SUSPENDED = "suspended"
+    CANCELLED = "cancelled"
+
+
+class RoleChangeStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"

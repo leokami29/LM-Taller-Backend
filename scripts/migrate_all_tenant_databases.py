@@ -18,6 +18,18 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
+
+# Sin esto, PowerShell no tiene TENANT_DATABASE_URL_MAP_JSON en el entorno y el mapa queda vacío.
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_dotenv() -> None:
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    load_dotenv(_BACKEND_ROOT / ".env")
 
 
 def _urls_from_env_map() -> list[str]:
@@ -44,6 +56,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    _load_dotenv()
+
     urls: list[str] = []
     if args.urls:
         urls = [u.strip() for u in args.urls.split(",") if u.strip()]
@@ -54,10 +68,14 @@ def main() -> None:
         sys.exit(1)
 
     if not urls:
-        print("No hay URLs para migrar", file=sys.stderr)
+        print(
+            "No hay URLs para migrar. Si usas .env, ejecuta desde la carpeta Backend y revisa "
+            "TENANT_DATABASE_URL_MAP_JSON (el script ya carga .env automáticamente).",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    root = str(_BACKEND_ROOT)
     for url in urls:
         print(f"Migrando: {url[:24]}...")
         env = os.environ.copy()

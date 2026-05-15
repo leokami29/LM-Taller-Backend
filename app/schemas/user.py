@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.core.enums import UserRole
+from app.schemas.rbac import UserSiteRoleInput
 
 
 class UserCreate(BaseModel):
@@ -39,7 +40,7 @@ class UserResponse(BaseModel):
 class UserAdminCreate(UserCreate):
     """Creación de usuario por admin (misma forma que UserCreate)."""
 
-    pass
+    site_roles: list[UserSiteRoleInput] = Field(default_factory=list)
 
 
 class UserPasswordUpdate(BaseModel):
