@@ -77,3 +77,21 @@ class PlatformCompanyUpdate(BaseModel):
     address: Optional[str] = Field(None, min_length=1)
     phone: Optional[str] = None
     email: Optional[EmailStr] = None
+
+
+class PlatformAnalyticsResponse(BaseModel):
+    total_tenants: int
+    active_tenants: int
+    total_mrr: float
+    by_plan: dict[str, int]
+
+
+class PlatformSiteResponse(BaseModel):
+    id: UUID
+    company_id: UUID
+    name: str
+    location: Optional[str] = None
+    is_active: bool
+    created_at: Optional[datetime] = None
+
+

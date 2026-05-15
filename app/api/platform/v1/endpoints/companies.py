@@ -16,7 +16,8 @@ from app.db.models.company import Company
 from app.db.models.platform_user import PlatformUser
 from app.db.models.user import User
 from app.db.session import get_db, tenant_engine_manager
-from app.schemas.platform import PlatformCompanyCreate, PlatformCompanyResponse, PlatformCompanyUpdate
+from app.schemas.platform import PlatformCompanyCreate, PlatformCompanyResponse, PlatformCompanyUpdate, PlatformSiteResponse
+from app.db.models.rbac import Site
 
 router = APIRouter(prefix="/companies", tags=["platform-companies"])
 
@@ -279,3 +280,26 @@ def create_company_with_admin(
     db.commit()
     db.refresh(company)
     return _tenant_company_to_response(company)
+
+
+@router.get("/{company_id}/sites", response_model=List[PlatformSiteResponse])
+def get_company_sites(
+    company_id: UUID,
+    db: Session = Depends(get_db),
+    _user: PlatformUser = Depends(RequirePlatformPermission(PLATFORM_COMPANIES_READ)),
+) -> List[PlatformSiteResponse]:
+    if settings.USE_TENANT_DATABASE_ROUTING:
+        row = db.query(TenantRouting).filter(TenantRouting.company_id == company_id).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="Empresa no encontrada")
+        eng = tenant_engine_manager.get_engine(row.database_url)
+        TenantSession = sessionmaker(autocommit=False, autoflush=False, bind=eng, class_=Session)
+        tdb = TenantSession()
+        try:
+            sites = tdb.query(Site).filter(Site.company_id == company_id).all()
+            return sites
+        finally:
+            tdb.close()
+    
+    sites = db.query(Site).filter(Site.company_id == company_id).all()
+    return sites
