@@ -14,12 +14,14 @@ También asegura usuarios de **plataforma** (super_admin, support_readonly, bill
 `/api/platform/v1` y el panel frontend en `/platform`.
 
 Credenciales taller demo (contraseña en todas: Demo1234):
-  - admin@demo.sgtaller.com     (admin)
-  - recepcion@demo.sgtaller.com (reception)
-  - tecnico1@demo.sgtaller.com    (technician)
-  - tecnico2@demo.sgtaller.com    (technician)
+  - admin@demo.sgtaller.com     (admin, todas las sedes)
+  - recepcion@demo.sgtaller.com (reception, sede Principal)
+  - tecnico1@demo.sgtaller.com    (technician, Principal)
+  - tecnico2@demo.sgtaller.com    (technician en Principal + Sede Norte — probar X-Site-Id)
   - visitante@demo.sgtaller.com   (viewer)
-  - baja@demo.sgtaller.com        (viewer, cuenta inactiva)
+  - baja@demo.sgtaller.com        (viewer inactivo)
+
+Planes demo: empresa en plan **Pro** (límites y módulos alineados con `PLAN_DEFAULTS`). Catálogo: fila `subscriptions` plan Pro por taller (routing).
 
 Segundo tenant (misma contraseña Demo1234) — datos normalizados (orden + líneas de costo, inventario, PDFs):
   - admin.norte@demo.sgtaller.com       (admin)

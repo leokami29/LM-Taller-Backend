@@ -31,6 +31,7 @@ from scripts.seed_demo_constants import (
     SECOND_COMPANY_NAME,
     SECOND_DEMO_NIT,
 )
+from scripts.seed_demo_rbac import ensure_demo_catalog_subscriptions
 from scripts.seed_demo_primary import populate_primary_demo_company
 from scripts.seed_demo_scenarios import ensure_secondary_demodata
 from scripts.seed_platform import ensure_platform_users_catalog, platform_dev_credentials_lines
@@ -128,8 +129,13 @@ def run_seed_demo_per_tenant(*, force: bool = False) -> None:
             phone="+57 601 5550200",
             address="Av. Boyacá # 170, Bogotá",
         )
+        ensure_demo_catalog_subscriptions(
+            cdb,
+            central_company_id=DEMO_CENTRAL_COMPANY_ID,
+            norte_company_id=DEMO_NORTE_COMPANY_ID,
+        )
         cdb.commit()
-        print("[catálogo] platform_users + tenant_routing listos.")
+        print("[catálogo] platform_users + tenant_routing + subscriptions demo listos.")
     finally:
         cdb.close()
     cat_eng.dispose()
@@ -169,6 +175,8 @@ def run_seed_demo_per_tenant(*, force: bool = False) -> None:
     print("\nLogin tenant (slug + email + contraseña Demo1234):")
     print(f"  Slug central: {DEMO_CENTRAL_SLUG} — admin@{DEMO_EMAIL_DOMAIN}")
     print(f"  Slug norte:   {DEMO_NORTE_SLUG} — admin.norte@{DEMO_EMAIL_DOMAIN}")
+    print("  Multi-sede (central): Jorge (tecnico2) tiene rol en Principal y Sede Norte — probá header X-Site-Id.")
+    print("  Multi-sede (902): técnico en Principal y Punto Boyacá.")
     print("Plataforma (/api/platform/v1):")
     for line in platform_dev_credentials_lines():
         print(line)

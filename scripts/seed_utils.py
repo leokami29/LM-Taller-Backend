@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.audit_log import AuditLog
 from app.db.models.company import Company
+from app.db.models.rbac import RoleChangeRequest, Site, TemporaryPermission, UserSiteRole
 from app.db.models.customer import Customer
 from app.db.models.equipment import Equipment
 from app.db.models.inventory import InventoryItem, InventoryMovement
@@ -18,6 +19,10 @@ from app.db.models.user import User
 
 def delete_company_cascade(session: Session, company_id) -> None:
     """Elimina empresa y filas dependientes (orden seguro para FK)."""
+    session.execute(delete(TemporaryPermission).where(TemporaryPermission.company_id == company_id))
+    session.execute(delete(RoleChangeRequest).where(RoleChangeRequest.company_id == company_id))
+    session.execute(delete(UserSiteRole).where(UserSiteRole.company_id == company_id))
+    session.execute(delete(Site).where(Site.company_id == company_id))
     session.execute(delete(AuditLog).where(AuditLog.company_id == company_id))
     session.execute(delete(PDFDocument).where(PDFDocument.company_id == company_id))
 

@@ -25,6 +25,7 @@ from app.db.models.service_order import ServiceOrder, ServiceOrderTimeline
 from app.db.models.supplier import Supplier
 from app.db.models.user import User
 from scripts.seed_demo_constants import DEMO_EMAIL_DOMAIN, DEMO_NIT
+from scripts.seed_demo_rbac import apply_demo_company_plan, ensure_demo_sites_primary
 from scripts.seed_demo_scenarios import apply_primary_extended_scenarios, sync_cost_lines_from_order_aggregates
 
 
@@ -650,6 +651,18 @@ def populate_primary_demo_company(
         tech2=tech2,
         inv_battery=inv_battery,
         inv_case=inv_case,
+    )
+
+    apply_demo_company_plan(session, company)
+    ensure_demo_sites_primary(
+        session,
+        company,
+        admin=admin,
+        recep=recep,
+        tech1=tech1,
+        tech2=tech2,
+        viewer=viewer,
+        inactive=inactive,
     )
 
     company.next_order_number = max(company.next_order_number, 50)

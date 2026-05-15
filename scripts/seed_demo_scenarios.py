@@ -39,6 +39,7 @@ from scripts.seed_demo_constants import (
     SECOND_COMPANY_NAME,
     SECOND_DEMO_NIT,
 )
+from scripts.seed_demo_rbac import apply_demo_company_plan, ensure_demo_sites_secondary
 
 
 def sync_cost_lines_from_order_aggregates(
@@ -196,6 +197,7 @@ def ensure_secondary_demodata(
     company = Company(**company_kw)
     session.add(company)
     session.flush()
+    apply_demo_company_plan(session, company)
 
     admin = User(
         company_id=company.id,
@@ -226,6 +228,8 @@ def ensure_secondary_demodata(
     admin.created_by_id = admin.id
     recep.created_by_id = admin.id
     tech.created_by_id = admin.id
+
+    ensure_demo_sites_secondary(session, company, admin=admin, recep=recep, tech=tech)
 
     sup = Supplier(
         company_id=company.id,
