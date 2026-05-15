@@ -121,7 +121,8 @@ def populate_primary_demo_company(
         identification_number="1023456789",
         city="Bogotá",
         country="Colombia",
-        metadata_json={"vip": True, "notes": "Prefiere contacto por WhatsApp"},
+        notes="Prefiere contacto por WhatsApp",
+        metadata_json={"vip": True},
     )
     c2 = Customer(
         company_id=company.id,

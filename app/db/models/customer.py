@@ -35,8 +35,10 @@ class Customer(Base):
         nullable=True,
     )
     identification_number: Mapped[str | None] = mapped_column(String(80))
+    rut: Mapped[str | None] = mapped_column(String(20))
     city: Mapped[str | None] = mapped_column(String(120))
     country: Mapped[str | None] = mapped_column(String(80))
+    notes: Mapped[str | None] = mapped_column(Text)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(

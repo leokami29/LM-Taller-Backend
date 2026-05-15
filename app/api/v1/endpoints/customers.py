@@ -24,7 +24,10 @@ router = APIRouter(prefix="/customers", tags=["customers"])
 def list_customers(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
-    search: Optional[str] = Query(None, description="Busca en nombre, apellido o email"),
+    search: Optional[str] = Query(
+        None,
+        description="Busca en nombre, apellido, email, teléfono, identificación o RUT",
+    ),
     current_user: User = Depends(RequirePermission(CUSTOMERS_READ)),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -36,6 +39,9 @@ def list_customers(
                 Customer.email.ilike(term),
                 Customer.first_name.ilike(term),
                 Customer.last_name.ilike(term),
+                Customer.phone.ilike(term),
+                Customer.identification_number.ilike(term),
+                Customer.rut.ilike(term),
             )
         )
     total = q.count()

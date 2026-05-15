@@ -52,5 +52,6 @@ class CostLineCategory(str, Enum):
 class IdentificationType(str, Enum):
     CC = "CC"
     NIT = "NIT"
+    RUT = "RUT"
     PASSPORT = "Passport"
     CEDULA_EXTRANJERIA = "Cédula Extranjería"
