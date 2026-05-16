@@ -11,8 +11,16 @@ class CompanyCreate(BaseModel):
     address: str
     phone: Optional[str] = None
     email: Optional[EmailStr] = None
-    country: str = "Colombia"
     currency: str = "COP"
+
+class CompanyUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[EmailStr] = None
+    country: Optional[str] = None
+    currency: Optional[str] = None
+
 
 
 class CompanyResponse(BaseModel):

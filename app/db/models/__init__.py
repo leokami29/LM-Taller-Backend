@@ -9,6 +9,7 @@ from app.db.models.platform_user import PlatformUser
 from app.db.models.service_order import ServiceOrder, ServiceOrderCostLine, ServiceOrderTimeline
 from app.db.models.supplier import Supplier
 from app.db.models.user import User
+from app.db.models.platform_settings import PlatformSetting
 
 __all__ = [
     "Company",
@@ -28,4 +29,5 @@ __all__ = [
     "InventoryMovement",
     "Supplier",
     "PDFDocument",
+    "PlatformSetting",
 ]

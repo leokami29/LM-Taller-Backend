@@ -20,6 +20,10 @@ from app.db.models.service_order import ServiceOrder, ServiceOrderCostLine
 from app.db.models.user import User
 from app.db.session import get_db
 from app.schemas.common import PaginatedResponse
+from app.db.models.audit_log import AuditLog
+from app.schemas.rbac import AuditLogResponse
+from app.db.models.inventory import InventoryMovement
+from app.schemas.inventory import InventoryMovementResponse
 from app.schemas.service_order import (
     ServiceOrderCostLineCreate,
     ServiceOrderCostLineResponse,
@@ -353,3 +357,46 @@ def delete_order(
     db.delete(order)
     db.commit()
     return {"message": "Orden eliminada", "status": "success"}
+
+
+@router.get("/{order_id}/timeline", response_model=list[AuditLogResponse])
+def get_order_timeline(
+    order_id: UUID,
+    current_user: User = Depends(RequirePermission(ORDERS_READ)),
+    db: Session = Depends(get_db),
+) -> list[AuditLog]:
+    order = (
+        db.query(ServiceOrder)
+        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
+        .first()
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    return (
+        db.query(AuditLog)
+        .filter(AuditLog.resource == "order", AuditLog.resource_id == order_id)
+        .order_by(AuditLog.timestamp.desc())
+        .all()
+    )
+
+
+@router.get("/{order_id}/parts", response_model=list[InventoryMovementResponse])
+def get_order_parts(
+    order_id: UUID,
+    current_user: User = Depends(RequirePermission(ORDERS_READ)),
+    db: Session = Depends(get_db),
+) -> list[InventoryMovement]:
+    order = (
+        db.query(ServiceOrder)
+        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
+        .first()
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    return (
+        db.query(InventoryMovement)
+        .filter(InventoryMovement.service_order_id == order_id)
+        .order_by(InventoryMovement.moved_at.desc())
+        .all()
+    )
+

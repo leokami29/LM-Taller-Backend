@@ -220,3 +220,43 @@ def adjust_stock(
     except ValueError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+@router.get("/movements", response_model=list[InventoryMovementResponse])
+def get_all_inventory_movements(
+    current_user: User = Depends(RequirePermission(INVENTORY_READ)),
+    db: Session = Depends(get_db),
+    limit: int = Query(100, ge=1),
+) -> list[InventoryMovement]:
+    movements = (
+        db.query(InventoryMovement)
+        .join(InventoryItem, InventoryItem.id == InventoryMovement.inventory_item_id)
+        .filter(InventoryItem.company_id == current_user.company_id)
+        .order_by(InventoryMovement.moved_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return movements
+
+
+@router.get("/{item_id}/movements", response_model=list[InventoryMovementResponse])
+def get_inventory_movements(
+    item_id: UUID,
+    current_user: User = Depends(RequirePermission(INVENTORY_READ)),
+    db: Session = Depends(get_db),
+) -> list[InventoryMovement]:
+    item = (
+        db.query(InventoryItem)
+        .filter(InventoryItem.id == item_id, InventoryItem.company_id == current_user.company_id)
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Ítem no encontrado")
+
+    movements = (
+        db.query(InventoryMovement)
+        .filter(InventoryMovement.inventory_item_id == item_id)
+        .order_by(InventoryMovement.moved_at.desc())
+        .all()
+    )
+    return movements
+

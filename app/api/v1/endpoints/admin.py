@@ -10,8 +10,10 @@ from app.core.security import SecurityUtils
 from app.dependencies import PermissionContext, RequirePermission, get_permission_context
 from app.db.models.rbac import Site, UserSiteRole
 from app.db.models.user import User
+from app.db.models.company import Company
 from app.db.session import get_db
 from app.schemas.user import UserAdminCreate, UserPasswordUpdate, UserResponse, UserUpdate
+from app.schemas.company import CompanyResponse, CompanyUpdate
 from app.services.permission_service import PermissionService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -179,3 +181,48 @@ def reset_user_password(
     db.commit()
     db.refresh(user)
     return user
+
+
+@router.put("/company", response_model=CompanyResponse)
+def update_own_company(
+    payload: CompanyUpdate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(RequirePermission(ADMIN_USERS)),
+    ctx: PermissionContext = Depends(get_permission_context),
+) -> Company:
+    company = db.query(Company).filter(Company.id == admin.company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    
+    data = payload.model_dump(exclude_unset=True)
+    if not data:
+        return company
+
+    for k, v in data.items():
+        setattr(company, k, v)
+        
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+    
+    PermissionService(db).log_action(
+        user_id=ctx.user_id,
+        company_id=ctx.company_id,
+        action="updated_company_profile",
+        resource="company",
+        resource_id=company.id,
+        request=None,
+        site_id=ctx.site_id,
+        changes=data,
+    )
+    return company
+
+@router.get("/company", response_model=CompanyResponse)
+def get_own_company(
+    db: Session = Depends(get_db),
+    admin: User = Depends(RequirePermission(ADMIN_USERS)),
+) -> Company:
+    company = db.query(Company).filter(Company.id == admin.company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    return company
