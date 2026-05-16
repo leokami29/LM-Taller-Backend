@@ -303,3 +303,50 @@ def get_company_sites(
     
     sites = db.query(Site).filter(Site.company_id == company_id).all()
     return sites
+
+
+@router.get("/sites/global")
+def get_all_global_sites(
+    db: Session = Depends(get_db),
+    _user: PlatformUser = Depends(RequirePlatformPermission(PLATFORM_COMPANIES_READ)),
+):
+    results = []
+    if settings.USE_TENANT_DATABASE_ROUTING:
+        routings = db.query(TenantRouting).filter(TenantRouting.is_active == True).all()
+        for row in routings:
+            try:
+                eng = tenant_engine_manager.get_engine(row.database_url)
+                TenantSession = sessionmaker(autocommit=False, autoflush=False, bind=eng, class_=Session)
+                tdb = TenantSession()
+                try:
+                    sites = tdb.query(Site).filter(Site.company_id == row.company_id).all()
+                    for s in sites:
+                        results.append({
+                            "id": s.id,
+                            "company_id": row.company_id,
+                            "company_name": row.display_name or row.slug,
+                            "name": s.name,
+                            "location": s.location,
+                            "is_active": s.is_active,
+                            "created_at": s.created_at
+                        })
+                finally:
+                    tdb.close()
+            except Exception:
+                pass
+        return results
+
+    # If mono-db
+    sites = db.query(Site).all()
+    companies = {c.id: c.name for c in db.query(Company).all()}
+    for s in sites:
+        results.append({
+            "id": s.id,
+            "company_id": s.company_id,
+            "company_name": companies.get(s.company_id, "Unknown"),
+            "name": s.name,
+            "location": s.location,
+            "is_active": s.is_active,
+            "created_at": s.created_at
+        })
+    return results
