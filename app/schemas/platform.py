@@ -82,6 +82,8 @@ class PlatformCompanyUpdate(BaseModel):
 class PlatformAnalyticsResponse(BaseModel):
     total_tenants: int
     active_tenants: int
+    total_sites: int
+    active_sites: int
     total_mrr: float
     by_plan: dict[str, int]
 
