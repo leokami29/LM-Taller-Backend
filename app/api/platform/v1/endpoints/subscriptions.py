@@ -83,12 +83,23 @@ def _persist_catalog_subscription(
         catalog_db.commit()
 
 
+def _catalog_period_end(company_id: UUID):
+    if not settings.USE_TENANT_DATABASE_ROUTING:
+        return None
+    from app.db.catalog.models import Subscription
+
+    with catalog_session_scope() as catalog_db:
+        sub = catalog_db.query(Subscription).filter(Subscription.company_id == company_id).first()
+        return sub.current_period_end if sub else None
+
+
 @router.get("/{company_id}/subscription", response_model=SubscriptionResponse)
 def get_subscription(
     company_id: UUID,
     _: PlatformUser = Depends(RequirePlatformPermission(PLATFORM_BILLING_READ)),
     db: Session = Depends(get_db),
 ) -> SubscriptionResponse:
+    period_end = _catalog_period_end(company_id)
     if settings.USE_TENANT_DATABASE_ROUTING:
         with tenant_session_for_company(company_id) as tenant_db:
             company = tenant_db.query(Company).filter(Company.id == company_id).first()
@@ -102,6 +113,7 @@ def get_subscription(
         status=company.subscription_status,
         billing_email=company.billing_email,
         provider="manual",
+        current_period_end=period_end,
     )
 
 
