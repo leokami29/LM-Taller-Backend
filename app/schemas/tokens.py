@@ -22,6 +22,8 @@ class TokenPairResponse(BaseModel):
 class TenantTokenPairResponse(TokenPairResponse):
     user: UserResponse
     session_effective: SessionEffectiveSchema
+    config_revision: int = 0
+    global_config_revision: int = 0
 
 
 class PlatformTokenPairResponse(TokenPairResponse):

@@ -40,6 +40,7 @@ from app.services.session_policy_service import (
     set_user_policy,
 )
 from app.services import platform_config_service as pcfg
+from app.services.tenant_config_events import TenantConfigReason, bump_company_config_revision, notify_company_config_changed
 
 router = APIRouter(prefix="/companies", tags=["platform-session-policy"])
 
@@ -151,8 +152,10 @@ def update_company_session_policy(
     def _write(tdb: Session, company: Company):
         entry = normalize_entry(payload.entry.model_dump())
         set_company_policy(company, entry if entry.mode == "explicit" else None, apply_to_all_sites=payload.apply_to_all_sites)
+        revision = bump_company_config_revision(company)
         tdb.add(company)
         tdb.commit()
+        notify_company_config_changed(company_id, TenantConfigReason.SESSION_POLICY, revision)
         tdb.refresh(company)
         sites = tdb.query(Site).filter(Site.company_id == company_id).order_by(Site.name).all()
         users = tdb.query(User).filter(User.company_id == company_id).order_by(User.full_name).all()
@@ -175,8 +178,10 @@ def update_site_session_policy(
             raise HTTPException(status_code=404, detail="Sede no encontrada")
         entry = normalize_entry(payload.entry.model_dump())
         set_site_policy(company, site_id, entry)
+        revision = bump_company_config_revision(company)
         tdb.add(company)
         tdb.commit()
+        notify_company_config_changed(company_id, TenantConfigReason.SESSION_POLICY, revision)
         tdb.refresh(company)
         sites = tdb.query(Site).filter(Site.company_id == company_id).order_by(Site.name).all()
         users = tdb.query(User).filter(User.company_id == company_id).order_by(User.full_name).all()
@@ -194,8 +199,10 @@ def delete_site_session_policy(
 ):
     def _write(tdb: Session, company: Company):
         remove_site_policy(company, site_id)
+        revision = bump_company_config_revision(company)
         tdb.add(company)
         tdb.commit()
+        notify_company_config_changed(company_id, TenantConfigReason.SESSION_POLICY, revision)
         tdb.refresh(company)
         sites = tdb.query(Site).filter(Site.company_id == company_id).order_by(Site.name).all()
         users = tdb.query(User).filter(User.company_id == company_id).order_by(User.full_name).all()
@@ -218,8 +225,10 @@ def update_user_session_policy(
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
         entry = normalize_entry(payload.entry.model_dump())
         set_user_policy(company, user_id, entry)
+        revision = bump_company_config_revision(company)
         tdb.add(company)
         tdb.commit()
+        notify_company_config_changed(company_id, TenantConfigReason.SESSION_POLICY, revision)
         tdb.refresh(company)
         sites = tdb.query(Site).filter(Site.company_id == company_id).order_by(Site.name).all()
         users = tdb.query(User).filter(User.company_id == company_id).order_by(User.full_name).all()
@@ -237,8 +246,10 @@ def delete_user_session_policy(
 ):
     def _write(tdb: Session, company: Company):
         remove_user_policy(company, user_id)
+        revision = bump_company_config_revision(company)
         tdb.add(company)
         tdb.commit()
+        notify_company_config_changed(company_id, TenantConfigReason.SESSION_POLICY, revision)
         tdb.refresh(company)
         sites = tdb.query(Site).filter(Site.company_id == company_id).order_by(Site.name).all()
         users = tdb.query(User).filter(User.company_id == company_id).order_by(User.full_name).all()

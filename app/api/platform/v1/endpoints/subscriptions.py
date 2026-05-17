@@ -15,6 +15,7 @@ from app.db.session import catalog_session_scope, get_db, tenant_session_for_com
 from app.dependencies import RequirePlatformPermission
 from app.schemas.subscription import SubscriptionAssign, SubscriptionResponse
 from app.services.subscription_service import apply_plan_to_company
+from app.services.tenant_config_events import TenantConfigReason, company_patch_meta, post_company_mutation
 
 router = APIRouter(prefix="/companies", tags=["platform-subscriptions"])
 
@@ -128,6 +129,12 @@ def assign_subscription(
     if not company:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
     _persist_catalog_subscription(company_id, payload, actor.id)
+    if company:
+        post_company_mutation(
+            company_id,
+            TenantConfigReason.SUBSCRIPTION,
+            meta=company_patch_meta(company),
+        )
 
     return SubscriptionResponse(
         company_id=company_id,

@@ -28,6 +28,7 @@ from app.services.session_policy_service import (
     set_site_policy,
     set_user_policy,
 )
+from app.services.tenant_config_events import TenantConfigReason, bump_company_config_revision, notify_company_config_changed
 
 router = APIRouter(prefix="/admin/session-policy", tags=["admin-session-policy"])
 
@@ -67,8 +68,10 @@ def update_company_session_policy(
         entry if entry.mode == "explicit" else None,
         apply_to_all_sites=payload.apply_to_all_sites,
     )
+    revision = bump_company_config_revision(company)
     db.add(company)
     db.commit()
+    notify_company_config_changed(company.id, TenantConfigReason.SESSION_POLICY, revision)
     db.refresh(company)
     return _document(db, company)
 
@@ -86,8 +89,10 @@ def update_site_session_policy(
         raise HTTPException(status_code=404, detail="Sede no encontrada")
     entry = normalize_entry(payload.entry.model_dump())
     set_site_policy(company, site_id, entry)
+    revision = bump_company_config_revision(company)
     db.add(company)
     db.commit()
+    notify_company_config_changed(company.id, TenantConfigReason.SESSION_POLICY, revision)
     db.refresh(company)
     return _document(db, company)
 
@@ -100,8 +105,10 @@ def delete_site_session_policy(
 ) -> SessionPolicyDocumentResponse:
     company = _company_or_404(db, admin)
     remove_site_policy(company, site_id)
+    revision = bump_company_config_revision(company)
     db.add(company)
     db.commit()
+    notify_company_config_changed(company.id, TenantConfigReason.SESSION_POLICY, revision)
     db.refresh(company)
     return _document(db, company)
 
@@ -119,8 +126,10 @@ def update_user_session_policy(
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     entry = normalize_entry(payload.entry.model_dump())
     set_user_policy(company, user_id, entry)
+    revision = bump_company_config_revision(company)
     db.add(company)
     db.commit()
+    notify_company_config_changed(company.id, TenantConfigReason.SESSION_POLICY, revision)
     db.refresh(company)
     return _document(db, company)
 
@@ -133,7 +142,9 @@ def delete_user_session_policy(
 ) -> SessionPolicyDocumentResponse:
     company = _company_or_404(db, admin)
     remove_user_policy(company, user_id)
+    revision = bump_company_config_revision(company)
     db.add(company)
     db.commit()
+    notify_company_config_changed(company.id, TenantConfigReason.SESSION_POLICY, revision)
     db.refresh(company)
     return _document(db, company)

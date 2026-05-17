@@ -24,7 +24,9 @@ from app.services.auth_service import (
     refresh_tenant_tokens,
 )
 from app.services.session_policy_service import ResolvedSession
+from app.services.tenant_config_events import read_company_config_revision, read_global_config_revision
 from app.tenancy import TenantResolveError
+from app.db.models.company import Company
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -46,14 +48,24 @@ def _resolved_to_schema(resolved: ResolvedSession) -> SessionEffectiveSchema:
     )
 
 
+def _config_revisions(db: Session, user: User) -> tuple[int, int]:
+    company = db.query(Company).filter(Company.id == user.company_id).first()
+    cfg = read_company_config_revision(company) if company else 0
+    return cfg, read_global_config_revision()
+
+
 def _token_pair(user: User, *, site_id=None) -> TenantTokenPairResponse:
+    config_revision = 0
+    global_config_revision = read_global_config_revision()
     if settings.USE_TENANT_DATABASE_ROUTING:
         with tenant_session_for_company(user.company_id) as db:
             access, refresh, resolved = create_tenant_token_pair(user, db, site_id=site_id)
+            config_revision, global_config_revision = _config_revisions(db, user)
     else:
         db = SessionLocal()
         try:
             access, refresh, resolved = create_tenant_token_pair(user, db, site_id=site_id)
+            config_revision, global_config_revision = _config_revisions(db, user)
         finally:
             db.close()
     return TenantTokenPairResponse(
@@ -61,6 +73,8 @@ def _token_pair(user: User, *, site_id=None) -> TenantTokenPairResponse:
         refresh_token=refresh,
         user=UserResponse.model_validate(user),
         session_effective=_resolved_to_schema(resolved),
+        config_revision=config_revision,
+        global_config_revision=global_config_revision,
     )
 
 
@@ -122,14 +136,20 @@ def refresh_access_token(payload: RefreshTokenRequest) -> TenantTokenPairRespons
         )
     with tenant_session_for_company(company_id) as db:
         out = refresh_tenant_tokens(db, payload.refresh_token, site_id=payload.site_id)
-    if not out:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token inválido o expirado")
-    access, refresh, user, resolved = out
+        if not out:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Refresh token inválido o expirado",
+            )
+        access, refresh, user, resolved = out
+        config_revision, global_config_revision = _config_revisions(db, user)
     return TenantTokenPairResponse(
         access_token=access,
         refresh_token=refresh,
         user=UserResponse.model_validate(user),
         session_effective=_resolved_to_schema(resolved),
+        config_revision=config_revision,
+        global_config_revision=global_config_revision,
     )
 
 

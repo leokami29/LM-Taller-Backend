@@ -7,6 +7,7 @@ from app.core.permissions import PLATFORM_COMPANIES_READ, PLATFORM_COMPANIES_WRI
 from app.dependencies import RequirePlatformPermission, require_platform_super_admin
 from app.db.models.platform_user import PlatformUser
 from app.services import platform_config_service as pcfg
+from app.services.tenant_config_events import TenantConfigReason, bump_and_notify_global
 
 router = APIRouter(prefix="/config", tags=["platform-config"])
 
@@ -61,6 +62,7 @@ def update_plans_config(
     config = pcfg.load_config()
     config["plans"] = payload.model_dump()["plans"]
     pcfg.save_config(config)
+    bump_and_notify_global(TenantConfigReason.ENTITLEMENTS)
     return {"plans": config["plans"]}
 
 
@@ -83,6 +85,7 @@ def update_session_config(
     _user: PlatformUser = Depends(require_platform_super_admin),
 ):
     s = pcfg.update_session_settings(payload.model_dump())
+    bump_and_notify_global(TenantConfigReason.GLOBAL_SESSION)
     return SessionConfigResponse(
         tenant_access_token_minutes=s.tenant_access_token_minutes,
         tenant_refresh_token_days=s.tenant_refresh_token_days,

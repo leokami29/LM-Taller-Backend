@@ -18,8 +18,20 @@ from app.db.models.user import User
 from app.db.session import get_db, tenant_engine_manager
 from app.schemas.platform import PlatformCompanyCreate, PlatformCompanyResponse, PlatformCompanyUpdate, PlatformSiteResponse
 from app.db.models.rbac import Site
+from app.services.tenant_config_events import TenantConfigReason, company_patch_meta, post_company_mutation
 
 router = APIRouter(prefix="/companies", tags=["platform-companies"])
+
+
+def _emit_company_patch(c: Company, changed: dict) -> None:
+    meta = company_patch_meta(c)
+    sub_keys = {"plan", "subscription_status", "active_users_limit", "billing_email"}
+    reason = (
+        TenantConfigReason.SUBSCRIPTION
+        if sub_keys & set(changed.keys())
+        else TenantConfigReason.COMPANY_STATUS
+    )
+    post_company_mutation(c.id, reason, meta=meta)
 
 
 def _tenant_company_to_response(c: Company) -> PlatformCompanyResponse:
@@ -151,6 +163,7 @@ def patch_company(
             db.add(row)
             db.commit()
             db.refresh(row)
+            _emit_company_patch(c, data)
             return _tenant_company_to_response(c)
         finally:
             tdb.close()
@@ -163,6 +176,7 @@ def patch_company(
     db.add(c)
     db.commit()
     db.refresh(c)
+    _emit_company_patch(c, data)
     return _tenant_company_to_response(c)
 
 

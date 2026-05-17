@@ -14,6 +14,7 @@ from app.db.models.company import Company
 from app.db.session import get_db
 from app.schemas.user import UserAdminCreate, UserPasswordUpdate, UserResponse, UserUpdate
 from app.schemas.company import CompanyResponse, CompanyUpdate
+from app.services.tenant_config_events import TenantConfigReason, bump_company_config_revision, notify_company_config_changed
 from app.services.permission_service import PermissionService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -201,10 +202,12 @@ def update_own_company(
     for k, v in data.items():
         setattr(company, k, v)
         
+    revision = bump_company_config_revision(company)
     db.add(company)
     db.commit()
+    notify_company_config_changed(company.id, TenantConfigReason.COMPANY_STATUS, revision)
     db.refresh(company)
-    
+
     PermissionService(db).log_action(
         user_id=ctx.user_id,
         company_id=ctx.company_id,

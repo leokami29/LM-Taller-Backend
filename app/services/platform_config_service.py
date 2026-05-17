@@ -45,6 +45,7 @@ def default_config() -> dict[str, Any]:
     return {
         "plans": {k: dict(v) for k, v in DEFAULT_PLANS.items()},
         "session": _default_session_dict(),
+        "meta": {"global_config_revision": 0},
     }
 
 
@@ -59,7 +60,11 @@ def load_config() -> dict[str, Any]:
         merged["plans"] = {**merged["plans"], **raw["plans"]}
     if isinstance(raw.get("session"), dict):
         merged["session"] = {**merged["session"], **raw["session"]}
+    if isinstance(raw.get("meta"), dict):
+        merged["meta"] = {**merged.get("meta", {}), **raw["meta"]}
     merged["session"] = normalize_session_dict(merged.get("session") or {})
+    if "meta" not in merged:
+        merged["meta"] = {"global_config_revision": 0}
     return merged
 
 

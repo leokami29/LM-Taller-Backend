@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,13 +7,29 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.platform.v1.router import router as platform_v1_router
 from app.api.v1.router import router as api_v1_router
 from app.config import settings
+from app.infrastructure.redis_client import connect_redis, disconnect_redis_async
 from app.middleware.error_handler import register_exception_handlers
 from app.middleware.logging import RequestLoggingMiddleware
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION, debug=settings.DEBUG)
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    connect_redis()
+    try:
+        yield
+    finally:
+        await disconnect_redis_async()
+
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
+    debug=settings.DEBUG,
+    lifespan=lifespan,
+)
 
 register_exception_handlers(app)
 
