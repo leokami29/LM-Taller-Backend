@@ -8,6 +8,7 @@ from jose import JWTError, jwt
 
 from app.config import settings
 from app.core.dt import utc_now
+from app.services.platform_config_service import get_session_settings
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
 platform_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/platform/v1/auth/token")
@@ -52,9 +53,15 @@ class SecurityUtils:
         return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
     @staticmethod
-    def create_refresh_token(data: dict[str, Any]) -> str:
+    def create_refresh_token(
+        data: dict[str, Any],
+        expires_delta: Optional[timedelta] = None,
+    ) -> str:
         to_encode = data.copy()
-        expire = utc_now() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        if expires_delta:
+            expire = utc_now() + expires_delta
+        else:
+            expire = utc_now() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
         to_encode.update({"exp": expire, "token_use": TOKEN_USE_REFRESH})
         return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
@@ -67,24 +74,28 @@ class SecurityUtils:
 
     @staticmethod
     def create_tenant_access_token(user_id: UUID, company_id: UUID) -> str:
+        session = get_session_settings()
         return SecurityUtils.create_access_token(
             {
                 "sub": str(user_id),
                 "typ": TYP_TENANT,
                 "company_id": str(company_id),
                 "token_use": TOKEN_USE_ACCESS,
-            }
+            },
+            expires_delta=timedelta(minutes=session.tenant_access_token_minutes),
         )
 
     @staticmethod
     def create_tenant_refresh_token(user_id: UUID, company_id: UUID) -> str:
+        session = get_session_settings()
         return SecurityUtils.create_refresh_token(
             {
                 "sub": str(user_id),
                 "typ": TYP_TENANT,
                 "rtyp": TYP_TENANT,
                 "company_id": str(company_id),
-            }
+            },
+            expires_delta=timedelta(days=session.tenant_refresh_token_days),
         )
 
     @staticmethod
@@ -101,7 +112,11 @@ class SecurityUtils:
         }
         if act_as_company_id:
             data["act_as_company_id"] = str(act_as_company_id)
-        return SecurityUtils.create_access_token(data)
+        session = get_session_settings()
+        return SecurityUtils.create_access_token(
+            data,
+            expires_delta=timedelta(minutes=session.platform_access_token_minutes),
+        )
 
     @staticmethod
     def create_platform_refresh_token(
@@ -117,4 +132,8 @@ class SecurityUtils:
         }
         if act_as_company_id:
             data["act_as_company_id"] = str(act_as_company_id)
-        return SecurityUtils.create_refresh_token(data)
+        session = get_session_settings()
+        return SecurityUtils.create_refresh_token(
+            data,
+            expires_delta=timedelta(days=session.platform_refresh_token_days),
+        )
