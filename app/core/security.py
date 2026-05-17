@@ -9,6 +9,7 @@ from jose import JWTError, jwt
 from app.config import settings
 from app.core.dt import utc_now
 from app.services.platform_config_service import get_session_settings
+from app.services.session_policy_service import ResolvedSession
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
 platform_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/platform/v1/auth/token")
@@ -73,8 +74,17 @@ class SecurityUtils:
             return None
 
     @staticmethod
-    def create_tenant_access_token(user_id: UUID, company_id: UUID) -> str:
-        session = get_session_settings()
+    def create_tenant_access_token(
+        user_id: UUID,
+        company_id: UUID,
+        *,
+        resolved: ResolvedSession | None = None,
+    ) -> str:
+        if resolved is None:
+            session = get_session_settings()
+            minutes = session.tenant_access_token_minutes
+        else:
+            minutes = resolved.access_token_minutes
         return SecurityUtils.create_access_token(
             {
                 "sub": str(user_id),
@@ -82,12 +92,21 @@ class SecurityUtils:
                 "company_id": str(company_id),
                 "token_use": TOKEN_USE_ACCESS,
             },
-            expires_delta=timedelta(minutes=session.tenant_access_token_minutes),
+            expires_delta=timedelta(minutes=minutes),
         )
 
     @staticmethod
-    def create_tenant_refresh_token(user_id: UUID, company_id: UUID) -> str:
-        session = get_session_settings()
+    def create_tenant_refresh_token(
+        user_id: UUID,
+        company_id: UUID,
+        *,
+        resolved: ResolvedSession | None = None,
+    ) -> str:
+        if resolved is None:
+            session = get_session_settings()
+            days = session.tenant_refresh_token_days
+        else:
+            days = resolved.refresh_token_days
         return SecurityUtils.create_refresh_token(
             {
                 "sub": str(user_id),
@@ -95,7 +114,7 @@ class SecurityUtils:
                 "rtyp": TYP_TENANT,
                 "company_id": str(company_id),
             },
-            expires_delta=timedelta(days=session.tenant_refresh_token_days),
+            expires_delta=timedelta(days=days),
         )
 
     @staticmethod

@@ -170,7 +170,7 @@ def platform_dev_credentials_lines() -> list[str]:
     ]
 
 
-def ensure_super_admin_only_cli() -> None:
+def ensure_super_admin_only_cli(*, force: bool = False) -> None:
     """CLI histórico `python -m scripts.seed_platform_super_admin` (solo super_admin)."""
     super_email = _pw("PLATFORM_SUPER_EMAIL", "super@sgtaller.com")
     super_password = _pw("PLATFORM_SUPER_PASSWORD", "DevSuper1234")
@@ -193,7 +193,15 @@ def ensure_super_admin_only_cli() -> None:
         try:
             existing = db.query(CatalogPlatformUser).filter(CatalogPlatformUser.email == super_email).first()
             if existing:
-                print(f"Ya existe platform user (catálogo): {super_email}")
+                if force:
+                    existing.hashed_password = SecurityUtils.hash_password(super_password)
+                    existing.role = PlatformRole.SUPER_ADMIN
+                    existing.is_active = True
+                    db.commit()
+                    print(f"Contraseña y rol actualizados (catálogo): {super_email}")
+                else:
+                    print(f"Ya existe platform user (catálogo): {super_email}")
+                    print("  Usa --force para restablecer contraseña y rol super_admin.")
                 return
             db.add(
                 CatalogPlatformUser(
@@ -213,7 +221,15 @@ def ensure_super_admin_only_cli() -> None:
     try:
         existing = db.query(PlatformUser).filter(PlatformUser.email == super_email).first()
         if existing:
-            print(f"Ya existe platform user: {super_email}")
+            if force:
+                existing.hashed_password = SecurityUtils.hash_password(super_password)
+                existing.role = PlatformRole.SUPER_ADMIN
+                existing.is_active = True
+                db.commit()
+                print(f"Contraseña y rol actualizados: {super_email}")
+            else:
+                print(f"Ya existe platform user: {super_email}")
+                print("  Usa --force para restablecer contraseña y rol super_admin.")
             return
         _ensure_user(
             db,

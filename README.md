@@ -113,6 +113,10 @@ Los JWT de empresa incluyen `typ=tenant` y `company_id` firmado; no aceptes `com
 - Caducidad de sesiones (persistida en `platform_config.json`, editable desde el front en `/platform/settings`):
   - `GET /api/platform/v1/config/session` — lectura (roles con permiso de companies read).
   - `PUT /api/platform/v1/config/session` — solo `super_admin`; cuerpo: `tenant_access_token_minutes`, `tenant_refresh_token_days`, `platform_access_token_minutes`, `platform_refresh_token_days` (access: 15–1440 min, refresh: 1–90 días). Aplica en el **próximo login** o cuando el refresh emita tokens nuevos. Si no hay archivo, se usan `ACCESS_TOKEN_EXPIRE_MINUTES` y `REFRESH_TOKEN_EXPIRE_DAYS` del `.env`.
+- **Overrides por taller** (en `companies.settings_json.session_policies`, precedencia: usuario > sede > empresa > global):
+  - Plataforma: `GET/PUT /api/platform/v1/companies/{id}/session-policy`, `PUT/DELETE .../sites/{site_id}`, `PUT/DELETE .../users/{user_id}`, `GET .../users`. `PUT` de empresa admite `apply_to_all_sites: true` para quitar overrides de sede.
+  - Admin taller: `GET/PUT /api/v1/admin/session-policy` y rutas análogas bajo `/sites/{id}` y `/users/{id}` (permiso `admin:users`).
+  - Refresh tenant: body opcional `site_id` para resolver TTL por sede activa.
 - Gestión de empresas: `GET/PATCH/POST /api/platform/v1/companies/...` (permisos según rol de plataforma).
 - `POST /api/platform/v1/impersonate` (solo `super_admin`): devuelve tokens con `act_as_company_id` para operar con el contexto RLS de esa empresa; queda registro en `audit_logs`.
 

@@ -17,11 +17,13 @@ from app.db.session import (
 from app.dependencies import get_current_user
 from app.schemas.tokens import RefreshTokenRequest, TenantTokenPairResponse
 from app.schemas.user import UserResponse
+from app.schemas.session_policy import SessionEffectiveSchema
 from app.services.auth_service import (
     authenticate_user,
     create_tenant_token_pair,
     refresh_tenant_tokens,
 )
+from app.services.session_policy_service import ResolvedSession
 from app.tenancy import TenantResolveError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -36,12 +38,29 @@ class LoginRequest(BaseModel):
     )
 
 
-def _token_pair(user: User) -> TenantTokenPairResponse:
-    access, refresh = create_tenant_token_pair(user)
+def _resolved_to_schema(resolved: ResolvedSession) -> SessionEffectiveSchema:
+    return SessionEffectiveSchema(
+        access_token_minutes=resolved.access_token_minutes,
+        refresh_token_days=resolved.refresh_token_days,
+        source=resolved.source,
+    )
+
+
+def _token_pair(user: User, *, site_id=None) -> TenantTokenPairResponse:
+    if settings.USE_TENANT_DATABASE_ROUTING:
+        with tenant_session_for_company(user.company_id) as db:
+            access, refresh, resolved = create_tenant_token_pair(user, db, site_id=site_id)
+    else:
+        db = SessionLocal()
+        try:
+            access, refresh, resolved = create_tenant_token_pair(user, db, site_id=site_id)
+        finally:
+            db.close()
     return TenantTokenPairResponse(
         access_token=access,
         refresh_token=refresh,
         user=UserResponse.model_validate(user),
+        session_effective=_resolved_to_schema(resolved),
     )
 
 
@@ -102,14 +121,15 @@ def refresh_access_token(payload: RefreshTokenRequest) -> TenantTokenPairRespons
             detail="Refresh token inválido o expirado",
         )
     with tenant_session_for_company(company_id) as db:
-        out = refresh_tenant_tokens(db, payload.refresh_token)
+        out = refresh_tenant_tokens(db, payload.refresh_token, site_id=payload.site_id)
     if not out:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token inválido o expirado")
-    access, refresh, user = out
+    access, refresh, user, resolved = out
     return TenantTokenPairResponse(
         access_token=access,
         refresh_token=refresh,
         user=UserResponse.model_validate(user),
+        session_effective=_resolved_to_schema(resolved),
     )
 
 

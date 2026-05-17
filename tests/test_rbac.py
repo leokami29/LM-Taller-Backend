@@ -85,11 +85,11 @@ def test_can_add_user_limit(db_session, seed_company_and_admin):
     assert ok is False
 
 
-def test_me_permissions_endpoint(client, seed_company_and_admin):
+def test_me_permissions_endpoint(client, db_session, seed_company_and_admin):
     company, admin = seed_company_and_admin
-    token, _ = __import__(
+    token, _, _ = __import__(
         "app.services.auth_service", fromlist=["create_tenant_token_pair"]
-    ).create_tenant_token_pair(admin)
+    ).create_tenant_token_pair(admin, db_session)
     r = client.get(
         "/api/v1/me/permissions",
         headers={"Authorization": f"Bearer {token}"},
