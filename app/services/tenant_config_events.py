@@ -207,7 +207,22 @@ def post_company_mutation(
         db.close()
 
 
-def company_patch_meta(company: Company) -> dict[str, Any]:
+def company_patch_meta(
+    company: Company,
+    *,
+    current_period_end: datetime | None = None,
+) -> dict[str, Any]:
     status = company.subscription_status
     status_val = status.value if hasattr(status, "value") else str(status)
-    return {"is_active": company.is_active, "subscription_status": status_val}
+    meta: dict[str, Any] = {
+        "is_active": company.is_active,
+        "subscription_status": status_val,
+    }
+    if company.billing_email:
+        meta["billing_email"] = company.billing_email
+    if current_period_end is not None:
+        if isinstance(current_period_end, datetime):
+            meta["current_period_end"] = current_period_end.isoformat()
+        else:
+            meta["current_period_end"] = str(current_period_end)
+    return meta

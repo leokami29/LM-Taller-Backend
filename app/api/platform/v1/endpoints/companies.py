@@ -18,13 +18,15 @@ from app.db.models.user import User
 from app.db.session import get_db, tenant_engine_manager
 from app.schemas.platform import PlatformCompanyCreate, PlatformCompanyResponse, PlatformCompanyUpdate, PlatformSiteResponse
 from app.db.models.rbac import Site
+from app.services.permission_service import get_catalog_subscription_period_end
 from app.services.tenant_config_events import TenantConfigReason, company_patch_meta, post_company_mutation
 
 router = APIRouter(prefix="/companies", tags=["platform-companies"])
 
 
 def _emit_company_patch(c: Company, changed: dict) -> None:
-    meta = company_patch_meta(c)
+    period_end = get_catalog_subscription_period_end(c.id)
+    meta = company_patch_meta(c, current_period_end=period_end)
     sub_keys = {"plan", "subscription_status", "active_users_limit", "billing_email"}
     reason = (
         TenantConfigReason.SUBSCRIPTION

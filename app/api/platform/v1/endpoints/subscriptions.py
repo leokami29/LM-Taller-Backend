@@ -130,10 +130,11 @@ def assign_subscription(
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
     _persist_catalog_subscription(company_id, payload, actor.id)
     if company:
+        period_end = payload.current_period_end or _catalog_period_end(company_id)
         post_company_mutation(
             company_id,
             TenantConfigReason.SUBSCRIPTION,
-            meta=company_patch_meta(company),
+            meta=company_patch_meta(company, current_period_end=period_end),
         )
 
     return SubscriptionResponse(

@@ -23,6 +23,19 @@ from app.db.models.service_order import ServiceOrder
 from app.db.models.user import User
 
 
+def get_catalog_subscription_period_end(company_id: UUID) -> datetime | None:
+    from app.config import settings
+
+    if not settings.USE_TENANT_DATABASE_ROUTING:
+        return None
+    from app.db.catalog.models import Subscription
+    from app.db.session import catalog_session_scope
+
+    with catalog_session_scope() as catalog_db:
+        sub = catalog_db.query(Subscription).filter(Subscription.company_id == company_id).first()
+        return sub.current_period_end if sub else None
+
+
 class PermissionService:
     def __init__(self, db: Session) -> None:
         self.db = db
@@ -37,6 +50,13 @@ class PermissionService:
             active_users_limit=company.active_users_limit,
             settings_json=company.settings_json,
         )
+
+    def get_subscription_period_end(self, company_id: UUID) -> datetime | None:
+        return get_catalog_subscription_period_end(company_id)
+
+    def get_billing_email(self, company_id: UUID) -> str | None:
+        company = self.db.query(Company).filter(Company.id == company_id).first()
+        return company.billing_email if company else None
 
     def resolve_role_for_site(
         self,

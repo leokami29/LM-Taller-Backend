@@ -58,5 +58,8 @@ def get_my_permissions(
                 orders_month=svc.count_orders_current_month(user.company_id),
                 storage_mb=0,
             ),
+            subscription_usable=ent.is_subscription_usable(),
+            current_period_end=svc.get_subscription_period_end(user.company_id),
+            billing_email=svc.get_billing_email(user.company_id),
         ),
     )

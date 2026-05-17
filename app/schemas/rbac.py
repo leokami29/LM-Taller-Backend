@@ -72,6 +72,9 @@ class EntitlementsPayload(BaseModel):
     modules: list[str]
     limits: EntitlementsLimits
     usage: EntitlementsUsage
+    subscription_usable: bool = True
+    current_period_end: Optional[datetime] = None
+    billing_email: Optional[str] = None
 
 
 class MePermissionsResponse(BaseModel):
