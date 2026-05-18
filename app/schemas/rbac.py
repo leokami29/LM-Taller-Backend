@@ -73,6 +73,7 @@ class EntitlementsPayload(BaseModel):
     limits: EntitlementsLimits
     usage: EntitlementsUsage
     subscription_usable: bool = True
+    subscription_block_reason: Optional[str] = None
     current_period_end: Optional[datetime] = None
     billing_email: Optional[str] = None
 

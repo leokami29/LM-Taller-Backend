@@ -2,9 +2,10 @@ from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 from app.core.enums import SubscriptionStatus
+from app.core.subscription_lifecycle import validate_subscription_period_status
 
 
 class SubscriptionAssign(BaseModel):
@@ -13,6 +14,11 @@ class SubscriptionAssign(BaseModel):
     billing_email: Optional[EmailStr] = None
     current_period_end: Optional[datetime] = None
     entitlements_override_json: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def check_period_matches_status(self) -> "SubscriptionAssign":
+        validate_subscription_period_status(self.status, self.current_period_end)
+        return self
 
 
 class SubscriptionResponse(BaseModel):

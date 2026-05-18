@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.dt import utc_now
 from app.core.entitlements import Entitlements
 from app.core.enums import UserRole
+from app.core.subscription_lifecycle import subscription_is_usable
 from app.core.features import permission_to_module
 from app.core.permissions import TENANT_ROLE_PERMISSIONS, tenant_has_permission
 from app.db.models.audit_log import AuditLog
@@ -57,6 +58,11 @@ class PermissionService:
     def get_billing_email(self, company_id: UUID) -> str | None:
         company = self.db.query(Company).filter(Company.id == company_id).first()
         return company.billing_email if company else None
+
+    def is_company_subscription_usable(self, company_id: UUID) -> bool:
+        ent = self.get_entitlements(company_id)
+        period_end = self.get_subscription_period_end(company_id)
+        return subscription_is_usable(ent.status, period_end)
 
     def resolve_role_for_site(
         self,
@@ -113,10 +119,10 @@ class PermissionService:
         company_id: UUID,
         site_id: UUID | None = None,
     ) -> frozenset[str]:
-        ent = self.get_entitlements(company_id)
-        if not ent.is_subscription_usable():
+        if not self.is_company_subscription_usable(company_id):
             return frozenset()
 
+        ent = self.get_entitlements(company_id)
         role = self.resolve_role_for_site(user_id, company_id, site_id)
         if role is None:
             return frozenset()
@@ -136,9 +142,9 @@ class PermissionService:
         permission: str,
         site_id: UUID | None = None,
     ) -> bool:
-        ent = self.get_entitlements(company_id)
-        if not ent.is_subscription_usable():
+        if not self.is_company_subscription_usable(company_id):
             return False
+        ent = self.get_entitlements(company_id)
         if not ent.has_module(permission_to_module(permission)):
             return False
         if permission in self._active_temporary_permissions(user_id, company_id, site_id):
@@ -225,9 +231,9 @@ class PermissionService:
         )
 
     def can_add_user(self, company_id: UUID) -> tuple[bool, str]:
+        if not self.is_company_subscription_usable(company_id):
+            return False, "Suscripción inactiva o período vencido"
         ent = self.get_entitlements(company_id)
-        if not ent.is_subscription_usable():
-            return False, "Suscripción inactiva"
         limit = ent.max_users
         if limit is None:
             return True, ""
@@ -237,9 +243,9 @@ class PermissionService:
         return True, ""
 
     def can_create_order(self, company_id: UUID) -> tuple[bool, str]:
+        if not self.is_company_subscription_usable(company_id):
+            return False, "Suscripción inactiva o período vencido"
         ent = self.get_entitlements(company_id)
-        if not ent.is_subscription_usable():
-            return False, "Suscripción inactiva"
         if not ent.has_module("orders"):
             return False, "Módulo de órdenes no incluido en el plan"
         limit = ent.max_orders_month

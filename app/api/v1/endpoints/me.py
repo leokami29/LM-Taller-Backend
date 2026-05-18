@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.features import MODULE_CORE
+from app.core.subscription_lifecycle import subscription_block_reason, subscription_is_usable
 from app.dependencies import PermissionContext, get_current_user, get_permission_context
 from app.db.models.user import User
 from app.db.session import get_db
@@ -38,6 +39,9 @@ def get_my_permissions(
     perms = svc.get_user_permissions(user.id, user.company_id, effective_site)
     sites = svc.list_accessible_sites(user.id, user.company_id)
     ent = svc.get_entitlements(user.company_id)
+    period_end = svc.get_subscription_period_end(user.company_id)
+    usable = subscription_is_usable(ent.status, period_end)
+    block_reason = subscription_block_reason(ent.status, period_end)
     modules = sorted(m for m in ent.modules if m != MODULE_CORE)
     return MePermissionsResponse(
         role=role or user.role,
@@ -58,8 +62,9 @@ def get_my_permissions(
                 orders_month=svc.count_orders_current_month(user.company_id),
                 storage_mb=0,
             ),
-            subscription_usable=ent.is_subscription_usable(),
-            current_period_end=svc.get_subscription_period_end(user.company_id),
+            subscription_usable=usable,
+            subscription_block_reason=block_reason,
+            current_period_end=period_end,
             billing_email=svc.get_billing_email(user.company_id),
         ),
     )
