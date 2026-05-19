@@ -16,6 +16,8 @@ from cryptography.hazmat.primitives.serialization import (
     PublicFormat,
 )
 
+from app.config import settings
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_KEY_ID = "v1"
@@ -25,8 +27,22 @@ def _canonical_json(payload: dict[str, Any]) -> bytes:
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
 
 
+def _signing_private_key_b64() -> str:
+    return (
+        os.getenv("LICENSE_SIGNING_PRIVATE_KEY_B64", "").strip()
+        or settings.LICENSE_SIGNING_PRIVATE_KEY_B64.strip()
+    )
+
+
+def _signing_public_key_b64() -> str:
+    return (
+        os.getenv("LICENSE_SIGNING_PUBLIC_KEY_B64", "").strip()
+        or settings.LICENSE_SIGNING_PUBLIC_KEY_B64.strip()
+    )
+
+
 def _load_private_key() -> Ed25519PrivateKey | None:
-    raw = os.getenv("LICENSE_SIGNING_PRIVATE_KEY_B64", "").strip()
+    raw = _signing_private_key_b64()
     if not raw:
         return None
     try:
@@ -38,7 +54,7 @@ def _load_private_key() -> Ed25519PrivateKey | None:
 
 
 def load_public_key() -> Ed25519PublicKey | None:
-    raw = os.getenv("LICENSE_SIGNING_PUBLIC_KEY_B64", "").strip()
+    raw = _signing_public_key_b64()
     if not raw:
         return None
     try:

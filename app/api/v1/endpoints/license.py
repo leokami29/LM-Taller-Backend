@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Annotated, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -52,20 +52,23 @@ def get_license_manifest(
         if not svc.is_company_subscription_usable(current_user.company_id):
             raise HTTPException(status_code=403, detail="Suscripción no permite emitir licencia desktop")
         tenant_slug = _tenant_slug_for_company(current_user.company_id)
-        with catalog_session_scope() as catalog_db:
-            seat = register_or_touch_installation(
-                catalog_db,
-                company_id=current_user.company_id,
-                installation_id=installation_id,
-                hostname=hostname,
-                plan_code=company.plan.value,
-            )
-            catalog_db.commit()
+        seat_id = uuid4()
+        if settings.USE_TENANT_DATABASE_ROUTING:
+            with catalog_session_scope() as catalog_db:
+                seat = register_or_touch_installation(
+                    catalog_db,
+                    company_id=current_user.company_id,
+                    installation_id=installation_id,
+                    hostname=hostname,
+                    plan_code=company.plan.value,
+                )
+                catalog_db.commit()
+                seat_id = seat.id
         return build_license_manifest(
             db,
             company=company,
             tenant_slug=tenant_slug,
-            seat_id=seat.id,
+            seat_id=seat_id,
             installation_id=installation_id,
         )
 

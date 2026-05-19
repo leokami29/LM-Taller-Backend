@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    LICENSE_SIGNING_PRIVATE_KEY_B64: str = ""
+    LICENSE_SIGNING_PUBLIC_KEY_B64: str = ""
+
     # En .env va como string (coma o JSON); no usar list[str] aquí: pydantic-settings intenta json.loads antes.
     cors_origins_raw: str = Field(
         default="http://localhost:3000,http://localhost:8000",
