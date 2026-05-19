@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from app.schemas.platform import PlatformUserResponse
 from app.schemas.session_policy import SessionEffectiveSchema
+from app.schemas.license import SignedLicenseManifest
 from app.schemas.user import UserResponse
 
 
@@ -24,6 +25,7 @@ class TenantTokenPairResponse(TokenPairResponse):
     session_effective: SessionEffectiveSchema
     config_revision: int = 0
     global_config_revision: int = 0
+    license_manifest: SignedLicenseManifest | None = None
 
 
 class PlatformTokenPairResponse(TokenPairResponse):

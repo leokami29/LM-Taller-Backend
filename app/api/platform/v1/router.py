@@ -7,6 +7,7 @@ from app.api.platform.v1.endpoints import stripe_webhook
 from app.api.platform.v1.endpoints import subscriptions as platform_subscriptions
 from app.api.platform.v1.endpoints import analytics as platform_analytics
 from app.api.platform.v1.endpoints import config as platform_config
+from app.api.platform.v1.endpoints import installations as platform_installations
 from app.api.platform.v1.endpoints import session_policy as platform_session_policy
 
 router = APIRouter(prefix="/api/platform/v1")
@@ -19,3 +20,4 @@ router.include_router(platform_impersonate.router)
 router.include_router(stripe_webhook.router)
 router.include_router(platform_analytics.router)
 router.include_router(platform_config.router)
+router.include_router(platform_installations.router)

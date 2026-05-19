@@ -105,6 +105,24 @@ class PlanEntitlement(CatalogBase):
     value_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
 
+class TenantInstallation(CatalogBase):
+    """Puesto desktop activo por taller (catálogo)."""
+
+    __tablename__ = "tenant_installations"
+    __table_args__ = (
+        Index("ix_tenant_installations_company", "company_id"),
+        UniqueConstraint("company_id", "installation_id", name="uq_tenant_installation_machine"),
+    )
+
+    id: Mapped[Any] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[Any] = mapped_column(UUID(as_uuid=True), nullable=False)
+    installation_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    hostname: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    activated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class Subscription(CatalogBase):
     __tablename__ = "subscriptions"
     __table_args__ = (Index("ix_subscriptions_company", "company_id"),)

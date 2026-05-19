@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any, Literal
+from datetime import datetime, timezone
+from typing import Annotated, Any, Literal, Optional
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -19,14 +19,19 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.core.enums import SubscriptionStatus, UserRole
 from app.core.permissions import ADMIN_USERS
 from app.core.security import TOKEN_USE_ACCESS, TYP_TENANT, SecurityUtils, oauth2_scheme
 from app.core.subscription_lifecycle import subscription_is_usable, validate_subscription_period_status
+from app.db.catalog.models import TenantRouting
 from app.db.models.company import Company
 from app.db.models.rbac import Site, UserSiteRole
 from app.db.models.user import User
-from app.db.session import tenant_session_for_company
+from app.db.session import catalog_session_scope, tenant_session_for_company
+from app.schemas.license import SignedLicenseManifest
+from app.services.installation_service import register_or_touch_installation
+from app.services.license_manifest_service import build_license_manifest
 from app.services.permission_service import PermissionService
 from app.services.tenant_config_events import (
     TenantConfigReason,
@@ -76,6 +81,7 @@ class AdminSyncSnapshot(BaseModel):
     users: list[dict[str, Any]]
     user_site_roles: list[dict[str, Any]]
     entitlements: dict[str, Any]
+    license_manifest: SignedLicenseManifest | None = None
 
 
 @dataclass
@@ -167,6 +173,14 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
     )
 
 
+def _ensure_subscription_allows_sync(ctx: SyncContext) -> None:
+    svc = PermissionService(ctx.db)
+    ent = svc.get_entitlements(ctx.company_id)
+    period_end = svc.get_subscription_period_end(ctx.company_id)
+    if not subscription_is_usable(ent.status, period_end):
+        raise HTTPException(status_code=403, detail="La suscripcion no permite sincronizar")
+
+
 def _ensure_subscription_allows_push(ctx: SyncContext) -> None:
     svc = PermissionService(ctx.db)
     ent = svc.get_entitlements(ctx.company_id)
@@ -175,9 +189,15 @@ def _ensure_subscription_allows_push(ctx: SyncContext) -> None:
         raise HTTPException(status_code=403, detail="La suscripcion no permite sincronizar cambios")
 
 
+def _as_utc_aware(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def _reject_if_stale(existing: Any, mutation: AdminMutation) -> AdminPushItemResult | None:
     current = getattr(existing, "updated_at", None)
-    if current is not None and current > mutation.updated_at:
+    if current is not None and _as_utc_aware(current) > _as_utc_aware(mutation.updated_at):
         return AdminPushItemResult(
             mutation_id=mutation.mutation_id,
             entity=mutation.entity,
@@ -373,18 +393,71 @@ def _rejected(mutation: AdminMutation, detail: str) -> AdminPushItemResult:
     )
 
 
+def _tenant_slug(company_id: UUID) -> str:
+    if not settings.USE_TENANT_DATABASE_ROUTING:
+        return "default"
+    with catalog_session_scope() as catalog_db:
+        row = catalog_db.query(TenantRouting).filter(TenantRouting.company_id == company_id).first()
+        return row.slug if row else "unknown"
+
+
+def _attach_license(
+    ctx: SyncContext,
+    snapshot: AdminSyncSnapshot,
+    *,
+    installation_id: str | None,
+    hostname: str | None,
+) -> AdminSyncSnapshot:
+    if not installation_id:
+        return snapshot
+    company = ctx.db.query(Company).filter(Company.id == ctx.company_id).first()
+    if not company:
+        return snapshot
+    seat_id = uuid4()
+    if settings.USE_TENANT_DATABASE_ROUTING:
+        with catalog_session_scope() as catalog_db:
+            seat = register_or_touch_installation(
+                catalog_db,
+                company_id=ctx.company_id,
+                installation_id=installation_id,
+                hostname=hostname,
+                plan_code=company.plan.value,
+            )
+            catalog_db.commit()
+            seat_id = seat.id
+    signed = build_license_manifest(
+        ctx.db,
+        company=company,
+        tenant_slug=_tenant_slug(ctx.company_id),
+        seat_id=seat_id,
+        installation_id=installation_id,
+    )
+    snapshot.license_manifest = signed
+    return snapshot
+
+
 @router.get("/bootstrap", response_model=AdminSyncSnapshot)
-def bootstrap_admin(ctx: SyncContext = Depends(_sync_context)) -> AdminSyncSnapshot:
-    return _snapshot(ctx)
+def bootstrap_admin(
+    installation_id: Annotated[Optional[str], Query(min_length=8, max_length=128)] = None,
+    hostname: Annotated[Optional[str], Query(max_length=255)] = None,
+    ctx: SyncContext = Depends(_sync_context),
+) -> AdminSyncSnapshot:
+    _ensure_subscription_allows_sync(ctx)
+    snap = _snapshot(ctx)
+    return _attach_license(ctx, snap, installation_id=installation_id, hostname=hostname)
 
 
 @router.get("/pull", response_model=AdminSyncSnapshot)
 def pull_admin(
     since: datetime | None = Query(None),
+    installation_id: Annotated[Optional[str], Query(min_length=8, max_length=128)] = None,
+    hostname: Annotated[Optional[str], Query(max_length=255)] = None,
     ctx: SyncContext = Depends(_sync_context),
 ) -> AdminSyncSnapshot:
+    _ensure_subscription_allows_sync(ctx)
     if since is None:
-        return _snapshot(ctx)
+        snap = _snapshot(ctx)
+        return _attach_license(ctx, snap, installation_id=installation_id, hostname=hostname)
     snapshot = _snapshot(ctx)
     snapshot.sites = [row for row in snapshot.sites if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
     snapshot.users = [row for row in snapshot.users if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
@@ -394,7 +467,7 @@ def pull_admin(
     if snapshot.company.get("updated_at") and str(snapshot.company["updated_at"]) <= since.isoformat():
         snapshot.company = {}
     snapshot.cursor = _max_cursor([snapshot.company] if snapshot.company else [], snapshot.sites, snapshot.users, snapshot.user_site_roles)
-    return snapshot
+    return _attach_license(ctx, snapshot, installation_id=installation_id, hostname=hostname)
 
 
 @router.post("/push", response_model=AdminPushResponse)
