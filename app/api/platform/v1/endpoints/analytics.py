@@ -1,10 +1,15 @@
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
+from app.core.dt import utc_now
 from app.core.permissions import PLATFORM_COMPANIES_READ
-from app.db.catalog.models import Plan, Subscription, TenantRouting
+from app.db.catalog.models import Plan, Subscription, TenantInstallation, TenantRouting
+from app.db.session import catalog_session_scope
+from app.services import plan_catalog_service as pcs
 from app.db.models.company import Company
 from app.db.models.platform_user import PlatformUser
 from app.db.models.rbac import Site
@@ -62,8 +67,53 @@ def get_platform_analytics(
         by_plan = {code: count for code, count in plans_query}
 
         mrr = 0.0
-        mrr += by_plan.get("pro", 0) * 29000
-        mrr += by_plan.get("enterprise", 0) * 99000
+        expiring_soon = 0
+        stale_sync = 0
+        seats_full = 0
+        now = utc_now()
+        horizon = now + timedelta(days=14)
+        with catalog_session_scope() as catalog_db:
+            prices = {code: pcs.get_plan_definition(catalog_db, code) for code in pcs.PLAN_CODES}
+            for code, count in by_plan.items():
+                mrr += count * float(prices.get(code, {}).get("monthly_price_cop") or 0)
+            expiring_soon = (
+                catalog_db.query(Subscription)
+                .filter(
+                    Subscription.status == "active",
+                    Subscription.current_period_end.isnot(None),
+                    Subscription.current_period_end <= horizon,
+                    Subscription.current_period_end >= now,
+                )
+                .count()
+            )
+            stale_cutoff = now - timedelta(days=7)
+            stale_sync = (
+                catalog_db.query(TenantInstallation)
+                .filter(
+                    TenantInstallation.revoked_at.is_(None),
+                    TenantInstallation.last_successful_sync_at.isnot(None),
+                    TenantInstallation.last_successful_sync_at < stale_cutoff,
+                )
+                .count()
+            )
+            active_subs = (
+                catalog_db.query(Subscription, Plan.code)
+                .join(Plan, Plan.id == Subscription.plan_id)
+                .filter(Subscription.status == "active")
+                .all()
+            )
+            for sub, plan_code in active_subs:
+                policy = pcs.desktop_policy_for_plan_code(catalog_db, plan_code)
+                active_seats = (
+                    catalog_db.query(TenantInstallation)
+                    .filter(
+                        TenantInstallation.company_id == sub.company_id,
+                        TenantInstallation.revoked_at.is_(None),
+                    )
+                    .count()
+                )
+                if active_seats >= policy.active_seats_limit:
+                    seats_full += 1
 
         return PlatformAnalyticsResponse(
             total_tenants=total,
@@ -72,6 +122,9 @@ def get_platform_analytics(
             active_sites=active_sites,
             total_mrr=mrr,
             by_plan=by_plan,
+            subscriptions_expiring_soon=expiring_soon,
+            installations_stale_sync=stale_sync,
+            seats_at_capacity=seats_full,
         )
 
     total = db.query(Company).count()

@@ -11,6 +11,9 @@ from app.core.dt import utc_now
 from app.core.entitlements import Entitlements
 from app.core.enums import PlanTier
 from app.core.features import ALL_MODULES
+from app.config import settings
+from app.db.session import catalog_session_scope
+from app.services.plan_catalog_service import desktop_policy_for_plan_code
 from app.core.plan_desktop_policy import desktop_policy_for_plan
 from app.core.subscription_lifecycle import subscription_block_reason, subscription_is_usable
 from app.db.models.company import Company
@@ -47,10 +50,15 @@ def build_license_manifest(
     seat_id: UUID,
     installation_id: str,
 ) -> SignedLicenseManifest:
-    svc = PermissionService(db)
-    ent: Entitlements = svc.get_entitlements(company.id)
-    period_end = svc.get_subscription_period_end(company.id)
-    policy = desktop_policy_for_plan(ent.plan)
+    perm = PermissionService(db)
+    ent: Entitlements = perm.get_entitlements(company.id)
+    period_end = perm.get_subscription_period_end(company.id)
+    plan_code = ent.plan.value if isinstance(ent.plan, PlanTier) else str(ent.plan)
+    if settings.USE_TENANT_DATABASE_ROUTING:
+        with catalog_session_scope() as catalog_db:
+            policy = desktop_policy_for_plan_code(catalog_db, plan_code)
+    else:
+        policy = desktop_policy_for_plan(plan_code)
     now = utc_now()
     usable = subscription_is_usable(ent.status, period_end, now=now)
     block = subscription_block_reason(ent.status, period_end, now=now)

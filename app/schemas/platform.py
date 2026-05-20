@@ -86,6 +86,9 @@ class PlatformAnalyticsResponse(BaseModel):
     active_sites: int
     total_mrr: float
     by_plan: dict[str, int]
+    subscriptions_expiring_soon: int = 0
+    installations_stale_sync: int = 0
+    seats_at_capacity: int = 0
 
 
 class PlatformSiteResponse(BaseModel):

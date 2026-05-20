@@ -212,12 +212,24 @@ def company_patch_meta(
     *,
     current_period_end: datetime | None = None,
 ) -> dict[str, Any]:
+    from app.config import settings
+
     status = company.subscription_status
     status_val = status.value if hasattr(status, "value") else str(status)
+    plan_val = company.plan.value if hasattr(company.plan, "value") else str(company.plan)
     meta: dict[str, Any] = {
         "is_active": company.is_active,
         "subscription_status": status_val,
+        "plan_code": plan_val,
     }
+    if settings.USE_TENANT_DATABASE_ROUTING:
+        from app.db.session import catalog_session_scope
+        from app.services.plan_catalog_service import desktop_policy_for_plan_code
+
+        with catalog_session_scope() as catalog_db:
+            meta["active_seats_limit"] = desktop_policy_for_plan_code(
+                catalog_db, plan_val
+            ).active_seats_limit
     if company.billing_email:
         meta["billing_email"] = company.billing_email
     if current_period_end is not None:

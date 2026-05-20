@@ -49,7 +49,10 @@ app.include_router(platform_v1_router)
 
 @app.get("/health")
 def health_check() -> dict:
+    from app.infrastructure.redis_client import get_sync_redis
+
     payload: dict = {"status": "ok", "version": settings.APP_VERSION}
+    payload["redis"] = "ok" if get_sync_redis() is not None else "degraded"
     if settings.USE_TENANT_DATABASE_ROUTING:
         from app.tenancy.metrics import snapshot as tenant_resolution_metrics
 

@@ -217,6 +217,13 @@ def ensure_demo_catalog_subscriptions(
         )
         return
 
+    from datetime import timedelta
+    from uuid import uuid4
+
+    from app.core.dt import utc_now
+    from app.db.catalog.models import BillingEvent
+
+    now = utc_now()
     for cid in (central_company_id, norte_company_id):
         sub = session.scalar(select(Subscription).where(Subscription.company_id == cid))
         if sub:
@@ -224,12 +231,29 @@ def ensure_demo_catalog_subscriptions(
             sub.status = SubscriptionStatus.ACTIVE
             sub.provider = "manual"
         else:
+            sub = Subscription(
+                company_id=cid,
+                plan_id=plan.id,
+                status=SubscriptionStatus.ACTIVE,
+                provider="manual",
+            )
+            session.add(sub)
+            session.flush()
+        existing = session.scalar(
+            select(BillingEvent).where(BillingEvent.company_id == cid).limit(1)
+        )
+        if not existing:
             session.add(
-                Subscription(
+                BillingEvent(
+                    id=uuid4(),
                     company_id=cid,
-                    plan_id=plan.id,
-                    status=SubscriptionStatus.ACTIVE,
-                    provider="manual",
+                    subscription_id=sub.id,
+                    amount_cop=99000,
+                    status="paid",
+                    period_start=now - timedelta(days=30),
+                    period_end=now,
+                    paid_at=now,
+                    notes="Seed demo — pago mock",
                 )
             )
     session.flush()

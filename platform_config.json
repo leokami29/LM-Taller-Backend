@@ -1,0 +1,25 @@
+{
+  "plans": {
+    "starter": {
+      "monthly_price_cop": 29000,
+      "max_active_users": 5
+    },
+    "pro": {
+      "monthly_price_cop": 149000,
+      "max_active_users": 15
+    },
+    "enterprise": {
+      "monthly_price_cop": 299000,
+      "max_active_users": 999
+    }
+  },
+  "session": {
+    "tenant_access_token_minutes": 30,
+    "tenant_refresh_token_days": 7,
+    "platform_access_token_minutes": 30,
+    "platform_refresh_token_days": 7
+  },
+  "meta": {
+    "global_config_revision": 1
+  }
+}

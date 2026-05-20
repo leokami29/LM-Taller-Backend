@@ -45,6 +45,11 @@ class PermissionService:
         company = self.db.query(Company).filter(Company.id == company_id).first()
         if not company:
             return Entitlements.default_starter()
+        from app.config import settings
+        from app.services.effective_entitlements_service import resolve_effective_entitlements
+
+        if settings.USE_TENANT_DATABASE_ROUTING:
+            return resolve_effective_entitlements(company)
         return Entitlements.from_company_row(
             plan=company.plan,
             subscription_status=company.subscription_status,

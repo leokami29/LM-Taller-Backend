@@ -65,4 +65,5 @@ class TenantInstallationResponse(BaseModel):
     hostname: str | None
     activated_at: datetime
     last_seen_at: datetime
+    last_successful_sync_at: datetime | None = None
     revoked_at: datetime | None

@@ -169,6 +169,28 @@ python -m scripts.seed_demo --force
 
 Contraseña de los usuarios **taller** demo: **`Demo1234`**. Usuarios **plataforma** por defecto en dev: `super@sgtaller.com` / `DevSuper1234` (y roles `support_readonly` / `billing`; ver [`scripts/seed_platform.py`](scripts/seed_platform.py) y el docstring de [`scripts/seed_demo.py`](scripts/seed_demo.py)).
 
+## Tiempo real (configuración y licencias)
+
+Los cambios hechos desde la **consola de plataforma** (suscripción, revocación de puesto, planes globales) se propagan a clientes conectados vía **Redis pub/sub** + **SSE**:
+
+1. Plataforma persiste el cambio y llama `post_company_mutation` / `bump_and_notify_global` ([`app/services/tenant_config_events.py`](app/services/tenant_config_events.py)).
+2. Publica en canales `tenant:events:{company_id}` y `tenant:events:global`.
+3. Los clientes con JWT de **usuario del taller** abren `GET /api/v1/events/stream` ([`app/api/v1/endpoints/tenant_events.py`](app/api/v1/endpoints/tenant_events.py)).
+4. **Web tenant** refresca permisos/sesión; **DesktopLM** llama `POST /license/refresh` en la API local.
+
+**Requisitos en desarrollo:**
+
+```powershell
+docker compose up -d redis
+# REDIS_URL=redis://localhost:6379 en .env
+```
+
+`GET /health` incluye `redis: ok|degraded`. Sin Redis, el SSE sigue vivo pero solo envía heartbeats (sin eventos).
+
+Los módulos/límites efectivos del manifiesto se resuelven desde el **catálogo** ([`app/services/effective_entitlements_service.py`](app/services/effective_entitlements_service.py)), no solo desde `companies.settings_json`.
+
+**Checklist E2E rápido:** cambiar suscripción en `/platform` → toast en web tenant y licencia actualizada en desktop (&lt;5 s con Redis). Revocar puesto → desktop bloqueado tras refresh. Editar plan global en settings → manifiesto con nuevos módulos sin re-asignar suscripción.
+
 ## Estructura
 
 - `app/main.py`: aplicación FastAPI.

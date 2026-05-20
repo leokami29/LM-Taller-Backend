@@ -30,7 +30,7 @@ from app.db.models.rbac import Site, UserSiteRole
 from app.db.models.user import User
 from app.db.session import catalog_session_scope, tenant_session_for_company
 from app.schemas.license import SignedLicenseManifest
-from app.services.installation_service import register_or_touch_installation
+from app.services.installation_service import record_installation_sync, register_or_touch_installation
 from app.services.license_manifest_service import build_license_manifest
 from app.services.permission_service import PermissionService
 from app.services.tenant_config_events import (
@@ -416,7 +416,7 @@ def _attach_license(
     seat_id = uuid4()
     if settings.USE_TENANT_DATABASE_ROUTING:
         with catalog_session_scope() as catalog_db:
-            seat = register_or_touch_installation(
+            seat = record_installation_sync(
                 catalog_db,
                 company_id=ctx.company_id,
                 installation_id=installation_id,
@@ -473,6 +473,8 @@ def pull_admin(
 @router.post("/push", response_model=AdminPushResponse)
 def push_admin(
     payload: AdminPushRequest,
+    installation_id: Annotated[Optional[str], Query(min_length=8, max_length=128)] = None,
+    hostname: Annotated[Optional[str], Query(max_length=255)] = None,
     ctx: SyncContext = Depends(_sync_context),
 ) -> AdminPushResponse:
     _ensure_subscription_allows_push(ctx)
@@ -499,4 +501,16 @@ def push_admin(
             ctx.db.add(company)
             ctx.db.commit()
             notify_company_config_changed(ctx.company_id, TenantConfigReason.COMPANY_STATUS, revision)
+        if installation_id and settings.USE_TENANT_DATABASE_ROUTING:
+            company_for_sync = ctx.db.query(Company).filter(Company.id == ctx.company_id).first()
+            if company_for_sync:
+                with catalog_session_scope() as catalog_db:
+                    record_installation_sync(
+                        catalog_db,
+                        company_id=ctx.company_id,
+                        installation_id=installation_id,
+                        hostname=hostname,
+                        plan_code=company_for_sync.plan.value,
+                    )
+                    catalog_db.commit()
     return AdminPushResponse(results=results, cursor=datetime.utcnow().isoformat())

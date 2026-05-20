@@ -120,7 +120,28 @@ class TenantInstallation(CatalogBase):
     hostname: Mapped[str | None] = mapped_column(String(255), nullable=True)
     activated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    last_successful_sync_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class BillingEvent(CatalogBase):
+    """Eventos de facturación mock (sin pasarela de pago)."""
+
+    __tablename__ = "billing_events"
+    __table_args__ = (Index("ix_billing_events_company", "company_id"),)
+
+    id: Mapped[Any] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[Any] = mapped_column(UUID(as_uuid=True), nullable=False)
+    subscription_id: Mapped[Any | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subscriptions.id"), nullable=True
+    )
+    amount_cop: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    period_start: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    period_end: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
 class Subscription(CatalogBase):
