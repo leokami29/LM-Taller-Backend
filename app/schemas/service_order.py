@@ -12,9 +12,16 @@ class ServiceOrderCreate(BaseModel):
     equipment_id: UUID
     current_customer_id: UUID
     original_owner_id: Optional[UUID] = None
-    problem_description: str
+    problem_description: str = Field(..., min_length=5)
     priority: OrderPriority = OrderPriority.MEDIUM
-    device_condition_on_entry: Optional[str] = None  # puede mapearse a diagnosis_notes o campo futuro
+    device_condition_on_entry: Optional[str] = None
+    site_id: Optional[UUID] = None
+    received_at: Optional[datetime] = None
+    received_by_id: Optional[UUID] = None
+    customer_po_number: Optional[str] = Field(None, max_length=64)
+    sales_area: Optional[str] = Field(None, max_length=120)
+    assigned_to_id: Optional[UUID] = None
+    estimated_completion: Optional[datetime] = None
 
 
 class ServiceOrderUpdate(BaseModel):
@@ -28,6 +35,12 @@ class ServiceOrderUpdate(BaseModel):
     cost_labor: Optional[Decimal] = Field(None, decimal_places=2, ge=0)
     current_customer_id: Optional[UUID] = None
     original_owner_id: Optional[UUID] = None
+    site_id: Optional[UUID] = None
+    received_at: Optional[datetime] = None
+    received_by_id: Optional[UUID] = None
+    customer_po_number: Optional[str] = Field(None, max_length=64)
+    sales_area: Optional[str] = Field(None, max_length=120)
+    device_condition_on_entry: Optional[str] = None
 
 
 class ServiceOrderStatusPatch(BaseModel):
@@ -85,3 +98,9 @@ class ServiceOrderResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     created_by_id: Optional[UUID]
+    site_id: Optional[UUID] = None
+    received_at: Optional[datetime] = None
+    received_by_id: Optional[UUID] = None
+    customer_po_number: Optional[str] = None
+    sales_area: Optional[str] = None
+    device_condition_on_entry: Optional[str] = None

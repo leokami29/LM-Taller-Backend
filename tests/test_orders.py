@@ -1,7 +1,10 @@
+from datetime import datetime, timedelta, timezone
+
 from app.core.enums import UserRole
 from app.core.security import SecurityUtils
 from app.db.models.customer import Customer
 from app.db.models.equipment import Equipment
+from app.db.models.rbac import Site
 from app.db.models.user import User
 
 
@@ -160,3 +163,87 @@ def test_order_cost_lines_crud_and_totals(client, db_session, seed_company_and_a
     assert order_get3["cost_labor"] == "0.00"
     assert order_get3["cost_parts"] == "45.50"
     assert order_get3["total_cost"] == "45.50"
+
+
+def test_order_intake_fields(client, db_session, seed_company_and_admin):
+    company, admin = seed_company_and_admin
+    site = Site(company_id=company.id, name="Sede Central", location="Bogotá", is_active=True)
+    tech = User(
+        company_id=company.id,
+        email="tech.intake@test.com",
+        full_name="Técnico Intake",
+        hashed_password=SecurityUtils.hash_password("password123"),
+        role=UserRole.TECHNICIAN,
+    )
+    customer = Customer(
+        company_id=company.id,
+        first_name="Pedro",
+        last_name="Intake",
+        email="pedro.intake@test.com",
+    )
+    equipment = Equipment(
+        company_id=company.id,
+        serial_number="SN-INTAKE-1",
+        brand="Samsung",
+        model="A54",
+    )
+    db_session.add(site)
+    db_session.add(tech)
+    db_session.add(customer)
+    db_session.add(equipment)
+    db_session.commit()
+    db_session.refresh(site)
+    db_session.refresh(tech)
+    db_session.refresh(customer)
+    db_session.refresh(equipment)
+
+    admin_token = client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@test.com", "password": "password123"},
+    ).json()["access_token"]
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    received_at = datetime(2026, 5, 18, 11, 26, 30, tzinfo=timezone.utc)
+    promised = received_at + timedelta(days=2)
+
+    res = client.post(
+        "/api/v1/orders/",
+        headers=headers,
+        json={
+            "equipment_id": str(equipment.id),
+            "current_customer_id": str(customer.id),
+            "problem_description": "Pantalla rota al caer",
+            "site_id": str(site.id),
+            "received_at": received_at.isoformat(),
+            "received_by_id": str(admin.id),
+            "customer_po_number": "PO-CLIENT-99",
+            "sales_area": "AREA VENTA",
+            "assigned_to_id": str(tech.id),
+            "estimated_completion": promised.isoformat(),
+            "device_condition_on_entry": "Golpe esquina superior",
+            "priority": "high",
+        },
+    )
+    assert res.status_code == 201, res.text
+    body = res.json()
+    assert body["site_id"] == str(site.id)
+    assert body["customer_po_number"] == "PO-CLIENT-99"
+    assert body["sales_area"] == "AREA VENTA"
+    assert body["assigned_to_id"] == str(tech.id)
+    assert body["device_condition_on_entry"] == "Golpe esquina superior"
+    assert body["priority"] == "high"
+    assert "Pantalla rota" in body["problem_description"]
+    assert "[Condición al ingreso" not in body["problem_description"]
+
+    bad = client.post(
+        "/api/v1/orders/",
+        headers=headers,
+        json={
+            "equipment_id": str(equipment.id),
+            "current_customer_id": str(customer.id),
+            "problem_description": "Otra orden",
+            "received_at": received_at.isoformat(),
+            "estimated_completion": (received_at - timedelta(hours=1)).isoformat(),
+        },
+    )
+    assert bad.status_code == 400

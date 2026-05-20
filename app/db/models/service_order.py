@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from app.db.models.company import Company
     from app.db.models.customer import Customer
     from app.db.models.equipment import Equipment
+    from app.db.models.rbac import Site
     from app.db.models.user import User
 
 
@@ -27,6 +28,7 @@ class ServiceOrder(Base):
         Index("ix_service_orders_equipment_id", "equipment_id"),
         Index("ix_service_orders_current_customer_id", "current_customer_id"),
         Index("ix_service_orders_assigned_to_id", "assigned_to_id"),
+        Index("ix_service_orders_site_id", "site_id"),
     )
 
     id: Mapped[Any] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -56,8 +58,15 @@ class ServiceOrder(Base):
         DateTime, default=utc_now, onupdate=utc_now
     )
     created_by_id: Mapped[Any | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    site_id: Mapped[Any | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id"))
+    received_at: Mapped[datetime | None] = mapped_column(DateTime)
+    received_by_id: Mapped[Any | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    customer_po_number: Mapped[str | None] = mapped_column(String(64))
+    sales_area: Mapped[str | None] = mapped_column(String(120))
+    device_condition_on_entry: Mapped[str | None] = mapped_column(Text)
 
     company: Mapped["Company"] = relationship("Company", back_populates="service_orders")
+    site: Mapped["Site | None"] = relationship("Site")
     equipment: Mapped["Equipment"] = relationship("Equipment")
     current_customer: Mapped["Customer"] = relationship("Customer", foreign_keys=[current_customer_id])
     original_owner: Mapped["Customer | None"] = relationship("Customer", foreign_keys=[original_owner_id])
@@ -67,6 +76,7 @@ class ServiceOrder(Base):
     created_by: Mapped["User | None"] = relationship(
         "User", foreign_keys=[created_by_id], back_populates="orders_created"
     )
+    received_by: Mapped["User | None"] = relationship("User", foreign_keys=[received_by_id])
     cost_lines: Mapped[list["ServiceOrderCostLine"]] = relationship(
         "ServiceOrderCostLine",
         back_populates="service_order",

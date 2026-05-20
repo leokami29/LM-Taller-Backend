@@ -16,6 +16,7 @@ from app.core.permissions import (
 )
 from app.dependencies import RequirePermission, ensure_not_viewer_for_mutation
 from app.db.models.customer import Customer
+from app.db.models.rbac import Site
 from app.db.models.service_order import ServiceOrder, ServiceOrderCostLine
 from app.db.models.user import User
 from app.db.session import get_db
@@ -100,6 +101,13 @@ def create_order(
             priority=payload.priority,
             created_by_id=current_user.id,
             device_condition_on_entry=payload.device_condition_on_entry,
+            site_id=payload.site_id,
+            received_at=payload.received_at,
+            received_by_id=payload.received_by_id,
+            customer_po_number=payload.customer_po_number,
+            sales_area=payload.sales_area,
+            assigned_to_id=payload.assigned_to_id,
+            estimated_completion=payload.estimated_completion,
         )
         db.commit()
         db.refresh(order)
@@ -301,6 +309,32 @@ def update_order(
         )
         if not u:
             raise HTTPException(status_code=400, detail="Técnico asignado no válido")
+    if data.get("site_id"):
+        site = (
+            db.query(Site)
+            .filter(Site.id == data["site_id"], Site.company_id == current_user.company_id)
+            .first()
+        )
+        if not site:
+            raise HTTPException(status_code=400, detail="Sede no válida")
+    if data.get("received_by_id"):
+        u = (
+            db.query(User)
+            .filter(
+                User.id == data["received_by_id"],
+                User.company_id == current_user.company_id,
+            )
+            .first()
+        )
+        if not u:
+            raise HTTPException(status_code=400, detail="Usuario de recepción no válido")
+    received_at = data.get("received_at", order.received_at)
+    estimated = data.get("estimated_completion", order.estimated_completion)
+    if received_at and estimated and estimated < received_at:
+        raise HTTPException(
+            status_code=400,
+            detail="La fecha prometida no puede ser anterior al ingreso",
+        )
 
     for k, v in data.items():
         setattr(order, k, v)

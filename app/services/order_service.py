@@ -1,14 +1,17 @@
+from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.dt import utc_now
 from app.core.enums import CostLineCategory, OrderStatus
 from app.core.exceptions import InvalidOrderTransitionError
 from app.db.models.company import Company
 from app.db.models.customer import Customer
 from app.db.models.equipment import Equipment
+from app.db.models.rbac import Site
 from app.db.models.service_order import ServiceOrder, ServiceOrderCostLine, ServiceOrderTimeline
 from app.db.models.user import User
 
@@ -85,6 +88,28 @@ def assert_transition_allowed(current: OrderStatus, new: OrderStatus) -> None:
         )
 
 
+def _assert_company_user(db: Session, *, company_id, user_id) -> User:
+    user = (
+        db.query(User)
+        .filter(User.id == user_id, User.company_id == company_id, User.is_active.is_(True))
+        .first()
+    )
+    if not user:
+        raise ValueError("Usuario no válido para esta empresa")
+    return user
+
+
+def _assert_company_site(db: Session, *, company_id, site_id) -> Site:
+    site = (
+        db.query(Site)
+        .filter(Site.id == site_id, Site.company_id == company_id, Site.is_active.is_(True))
+        .first()
+    )
+    if not site:
+        raise ValueError("Sede no válida")
+    return site
+
+
 def create_service_order(
     db: Session,
     *,
@@ -96,6 +121,13 @@ def create_service_order(
     priority,
     created_by_id,
     device_condition_on_entry: Optional[str] = None,
+    site_id: Optional[UUID] = None,
+    received_at: Optional[datetime] = None,
+    received_by_id: Optional[UUID] = None,
+    customer_po_number: Optional[str] = None,
+    sales_area: Optional[str] = None,
+    assigned_to_id: Optional[UUID] = None,
+    estimated_completion: Optional[datetime] = None,
 ) -> ServiceOrder:
     equipment = (
         db.query(Equipment)
@@ -122,10 +154,21 @@ def create_service_order(
         if not oo:
             raise ValueError("Propietario original no encontrado")
 
+    if site_id:
+        _assert_company_site(db, company_id=company_id, site_id=site_id)
+
+    reception_user_id = received_by_id or created_by_id
+    if reception_user_id:
+        _assert_company_user(db, company_id=company_id, user_id=reception_user_id)
+
+    if assigned_to_id:
+        _assert_company_user(db, company_id=company_id, user_id=assigned_to_id)
+
+    intake_at = received_at or utc_now()
+    if estimated_completion and estimated_completion < intake_at:
+        raise ValueError("La fecha prometida no puede ser anterior al ingreso")
+
     order_number = allocate_order_number(db, company_id)
-    desc = problem_description
-    if device_condition_on_entry:
-        desc = f"[Condición al ingreso: {device_condition_on_entry}]\n{problem_description}"
 
     order = ServiceOrder(
         company_id=company_id,
@@ -135,11 +178,19 @@ def create_service_order(
         original_owner_id=original_owner_id,
         status=OrderStatus.RECEIVED,
         priority=priority,
-        problem_description=desc,
+        problem_description=problem_description,
+        device_condition_on_entry=device_condition_on_entry,
         cost_parts=Decimal("0"),
         cost_labor=Decimal("0"),
         total_cost=Decimal("0"),
         created_by_id=created_by_id,
+        site_id=site_id,
+        received_at=intake_at,
+        received_by_id=reception_user_id,
+        customer_po_number=(customer_po_number or "").strip() or None,
+        sales_area=(sales_area or "").strip() or None,
+        assigned_to_id=assigned_to_id,
+        estimated_completion=estimated_completion,
     )
     recompute_total_cost(db, order)
     db.add(order)

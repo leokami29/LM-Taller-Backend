@@ -28,10 +28,15 @@ def list_equipment(
     limit: int = Query(50, ge=1, le=100),
     search: Optional[str] = Query(None),
     brand: Optional[str] = Query(None),
+    owner_id: Optional[UUID] = Query(
+        None, description="Filtrar equipos por propietario (cliente)"
+    ),
     current_user: User = Depends(RequirePermission(EQUIPMENT_READ)),
     db: Session = Depends(get_db),
 ) -> dict:
     q = db.query(Equipment).filter(Equipment.company_id == current_user.company_id)
+    if owner_id:
+        q = q.filter(Equipment.original_owner_id == owner_id)
     if search:
         term = f"%{search.lower()}%"
         q = q.filter(
