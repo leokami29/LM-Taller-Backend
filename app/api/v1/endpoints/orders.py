@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.enums import OrderPriority, OrderStatus, ServiceOrderKind, UserRole
 from app.core.exceptions import InvalidOrderTransitionError
@@ -420,27 +420,18 @@ def delete_order(
 
 
 def _timeline_entry_response(entry: ServiceOrderTimeline) -> OrderTimelineEntryResponse:
-    if entry.old_status is None:
-        action = "Orden creada"
-    else:
-        action = f"Estado: {entry.old_status} → {entry.new_status}"
-
-    changes: dict = {}
-    if entry.old_status is not None:
-        changes["old_status"] = entry.old_status
-        changes["new_status"] = entry.new_status
-    if entry.notes:
-        changes["notes"] = entry.notes
-    if entry.time_spent_seconds is not None:
-        changes["time_spent_seconds"] = entry.time_spent_seconds
-    if entry.changed_by_id is not None:
-        changes["changed_by_id"] = str(entry.changed_by_id)
-
+    kind = "created" if entry.old_status is None else "status_change"
+    changed_by = entry.changed_by
     return OrderTimelineEntryResponse(
         id=entry.id,
-        action=action,
+        kind=kind,
         timestamp=entry.changed_at,
-        changes=changes or None,
+        old_status=entry.old_status,
+        new_status=entry.new_status,
+        notes=entry.notes,
+        time_spent_seconds=entry.time_spent_seconds,
+        changed_by_id=entry.changed_by_id,
+        changed_by_name=changed_by.full_name if changed_by else None,
     )
 
 
@@ -459,6 +450,7 @@ def get_order_timeline(
         raise HTTPException(status_code=404, detail="Orden no encontrada")
     entries = (
         db.query(ServiceOrderTimeline)
+        .options(joinedload(ServiceOrderTimeline.changed_by))
         .filter(ServiceOrderTimeline.service_order_id == order_id)
         .order_by(ServiceOrderTimeline.changed_at.desc())
         .all()

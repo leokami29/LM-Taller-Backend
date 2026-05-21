@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -127,6 +127,11 @@ class OrderTimelineEntryResponse(BaseModel):
     """Historial de estados de la orden (pestaña timeline en UI)."""
 
     id: UUID
-    action: str
+    kind: Literal["created", "status_change"]
     timestamp: datetime
-    changes: Optional[dict[str, Any]] = None
+    old_status: Optional[str] = None
+    new_status: str
+    notes: Optional[str] = None
+    time_spent_seconds: Optional[int] = None
+    changed_by_id: Optional[UUID] = None
+    changed_by_name: Optional[str] = None
