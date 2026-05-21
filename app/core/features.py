@@ -5,6 +5,8 @@ from __future__ import annotations
 from app.core.permissions import (
     ADMIN_USERS,
     ANALYTICS_READ,
+    CONTRACTS_READ,
+    CONTRACTS_WRITE,
     CUSTOMERS_DELETE,
     CUSTOMERS_READ,
     CUSTOMERS_WRITE,
@@ -19,6 +21,8 @@ from app.core.permissions import (
     ORDERS_READ,
     ORDERS_STATUS,
     ORDERS_WRITE,
+    PORTAL_USERS_READ,
+    PORTAL_USERS_WRITE,
 )
 
 MODULE_CORE = "core"
@@ -29,6 +33,8 @@ MODULE_INVENTORY = "inventory"
 MODULE_ANALYTICS = "analytics"
 MODULE_ADMIN_USERS = "admin_users"
 MODULE_DOCUMENTS = "documents"
+MODULE_CUSTOMER_PORTAL = "customer_portal"
+MODULE_CONTRACTS = "contracts"
 
 ALL_MODULES = frozenset(
     {
@@ -40,6 +46,8 @@ ALL_MODULES = frozenset(
         MODULE_ANALYTICS,
         MODULE_ADMIN_USERS,
         MODULE_DOCUMENTS,
+        MODULE_CUSTOMER_PORTAL,
+        MODULE_CONTRACTS,
     }
 )
 
@@ -60,6 +68,10 @@ PERMISSION_TO_MODULE: dict[str, str] = {
     INVENTORY_DELETE: MODULE_INVENTORY,
     ANALYTICS_READ: MODULE_ANALYTICS,
     ADMIN_USERS: MODULE_ADMIN_USERS,
+    CONTRACTS_READ: MODULE_CONTRACTS,
+    CONTRACTS_WRITE: MODULE_CONTRACTS,
+    PORTAL_USERS_READ: MODULE_CUSTOMER_PORTAL,
+    PORTAL_USERS_WRITE: MODULE_CUSTOMER_PORTAL,
 }
 
 PLAN_DEFAULTS: dict[str, dict] = {
@@ -84,6 +96,8 @@ PLAN_DEFAULTS: dict[str, dict] = {
             MODULE_INVENTORY,
             MODULE_ANALYTICS,
             MODULE_ADMIN_USERS,
+            MODULE_CONTRACTS,
+            MODULE_CUSTOMER_PORTAL,
         },
         "max_users": 20,
         "max_orders_month": 2000,

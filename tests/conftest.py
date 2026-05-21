@@ -72,7 +72,7 @@ def seed_company_and_admin(db_session):
     db_session.add(company)
     db_session.commit()
     db_session.refresh(company)
-    site = Site(company_id=company.id, name="Principal", location="Calle 1")
+    site = Site(company_id=company.id, code="MAIN", name="Principal", location="Calle 1")
     db_session.add(site)
     db_session.commit()
     db_session.refresh(site)

@@ -21,6 +21,10 @@ INVENTORY_STOCK = "inventory:stock"
 INVENTORY_DELETE = "inventory:delete"
 ADMIN_USERS = "admin:users"
 ANALYTICS_READ = "analytics:read"
+CONTRACTS_READ = "contracts:read"
+CONTRACTS_WRITE = "contracts:write"
+PORTAL_USERS_READ = "portal_users:read"
+PORTAL_USERS_WRITE = "portal_users:write"
 
 TENANT_ROLE_PERMISSIONS: dict[UserRole, frozenset[str]] = {
     UserRole.ADMIN: frozenset(
@@ -41,6 +45,10 @@ TENANT_ROLE_PERMISSIONS: dict[UserRole, frozenset[str]] = {
             INVENTORY_DELETE,
             ADMIN_USERS,
             ANALYTICS_READ,
+            CONTRACTS_READ,
+            CONTRACTS_WRITE,
+            PORTAL_USERS_READ,
+            PORTAL_USERS_WRITE,
         }
     ),
     UserRole.TECHNICIAN: frozenset(
@@ -65,6 +73,9 @@ TENANT_ROLE_PERMISSIONS: dict[UserRole, frozenset[str]] = {
             ORDERS_WRITE,
             INVENTORY_READ,
             ANALYTICS_READ,
+            CONTRACTS_READ,
+            PORTAL_USERS_READ,
+            PORTAL_USERS_WRITE,
         }
     ),
     UserRole.VIEWER: frozenset(

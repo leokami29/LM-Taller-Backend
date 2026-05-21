@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -10,14 +10,18 @@ from sqlalchemy.orm import Session
 
 from app.core.dt import utc_now
 from app.core.enums import (
+    ContractKind,
     IdentificationType,
     InventoryMovementType,
     OrderPriority,
     OrderStatus,
+    ServiceOrderKind,
     UserRole,
 )
 from app.db.models.company import Company
 from app.db.models.customer import Customer
+from app.db.models.customer_portal_user import CustomerPortalUser
+from app.db.models.service_contract import ServiceContract
 from app.db.models.equipment import Equipment
 from app.db.models.inventory import InventoryItem, InventoryMovement
 from app.db.models.pdf_document import PDFDocument
@@ -654,7 +658,7 @@ def populate_primary_demo_company(
     )
 
     apply_demo_company_plan(session, company)
-    ensure_demo_sites_primary(
+    principal, _ = ensure_demo_sites_primary(
         session,
         company,
         admin=admin,
@@ -663,6 +667,49 @@ def populate_primary_demo_company(
         tech2=tech2,
         viewer=viewer,
         inactive=inactive,
+    )
+
+    session.add(
+        ServiceContract(
+            company_id=company.id,
+            customer_id=c2.id,
+            contract_number="DEMO-CONTRACT-001",
+            name="Mantenimiento demo portal",
+            contract_kind=ContractKind.MAINTENANCE,
+            default_site_id=principal.id,
+            allowed_order_kinds=[ServiceOrderKind.WORKSHOP_INTAKE_CONTRACT.value],
+            template_json={
+                "version": 1,
+                "fields": [
+                    {
+                        "key": "location",
+                        "label": "Ubicación visita",
+                        "type": "text",
+                        "required": True,
+                    },
+                    {
+                        "key": "urgency",
+                        "label": "Urgencia",
+                        "type": "select",
+                        "options": ["normal", "alta"],
+                    },
+                ],
+            },
+            valid_from=date.today() - timedelta(days=30),
+            valid_to=date.today() + timedelta(days=365),
+            is_active=True,
+        )
+    )
+    session.add(
+        CustomerPortalUser(
+            company_id=company.id,
+            customer_id=c2.id,
+            email=f"portal.cliente@{DEMO_EMAIL_DOMAIN}",
+            full_name="Contacto Portal Demo",
+            hashed_password=pwd_hash,
+            invited_by_id=admin.id,
+            is_active=True,
+        )
     )
 
     company.next_order_number = max(company.next_order_number, 50)

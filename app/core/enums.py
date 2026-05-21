@@ -33,6 +33,44 @@ class OrderPriority(str, Enum):
     URGENT = "urgent"
 
 
+class ServiceOrderKind(str, Enum):
+    """Tipo operativo de la orden (define prefijo y serie numérica por sede)."""
+
+    WORKSHOP_INTAKE = "workshop_intake"
+    WORKSHOP_INTAKE_CONTRACT = "workshop_intake_contract"
+    FIELD_SERVICE = "field_service"
+    FIELD_SERVICE_CONTRACT = "field_service_contract"
+
+
+def is_contract_order_kind(kind: "ServiceOrderKind") -> bool:
+    return kind in (
+        ServiceOrderKind.WORKSHOP_INTAKE_CONTRACT,
+        ServiceOrderKind.FIELD_SERVICE_CONTRACT,
+    )
+
+
+def is_workshop_order_kind(kind: "ServiceOrderKind") -> bool:
+    return kind in (
+        ServiceOrderKind.WORKSHOP_INTAKE,
+        ServiceOrderKind.WORKSHOP_INTAKE_CONTRACT,
+    )
+
+
+class ContractKind(str, Enum):
+    MAINTENANCE = "maintenance"
+    WARRANTY = "warranty"
+    FIELD_SLA = "field_sla"
+    CUSTOM = "custom"
+
+
+PORTAL_ALLOWED_ORDER_KINDS = frozenset(
+    {
+        ServiceOrderKind.WORKSHOP_INTAKE_CONTRACT,
+        ServiceOrderKind.FIELD_SERVICE_CONTRACT,
+    }
+)
+
+
 class InventoryMovementType(str, Enum):
     PURCHASE = "purchase"
     USED_IN_REPAIR = "used_in_repair"

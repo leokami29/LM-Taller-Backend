@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.core.enums import OrderPriority, OrderStatus, UserRole
+from app.core.enums import OrderPriority, OrderStatus, ServiceOrderKind, UserRole
 from app.core.exceptions import InvalidOrderTransitionError
 from app.core.permissions import (
     ORDERS_DELETE,
@@ -29,6 +29,7 @@ from app.schemas.service_order import (
     ServiceOrderCostLineCreate,
     ServiceOrderCostLineResponse,
     ServiceOrderCostLineUpdate,
+    NextOrderNumberResponse,
     ServiceOrderCreate,
     ServiceOrderResponse,
     ServiceOrderStatusPatch,
@@ -40,6 +41,7 @@ from app.services.order_service import (
     change_order_status,
     create_service_order,
     delete_cost_line,
+    peek_next_order_number,
     get_cost_line_for_order,
     order_has_cost_lines,
     recompute_total_cost,
@@ -60,6 +62,7 @@ def list_orders(
     limit: int = Query(50, ge=1, le=100),
     status_filter: Optional[OrderStatus] = Query(None, alias="status"),
     priority: Optional[OrderPriority] = Query(None),
+    order_kind: Optional[ServiceOrderKind] = Query(None),
     search: Optional[str] = Query(None, description="Número de orden o descripción"),
     current_user: User = Depends(RequirePermission(ORDERS_READ)),
     db: Session = Depends(get_db),
@@ -69,6 +72,8 @@ def list_orders(
         q = q.filter(ServiceOrder.status == status_filter)
     if priority:
         q = q.filter(ServiceOrder.priority == priority)
+    if order_kind:
+        q = q.filter(ServiceOrder.order_kind == order_kind)
     if search:
         term = f"%{search.lower()}%"
         q = q.filter(
@@ -108,10 +113,32 @@ def create_order(
             sales_area=payload.sales_area,
             assigned_to_id=payload.assigned_to_id,
             estimated_completion=payload.estimated_completion,
+            order_kind=payload.order_kind,
+            service_contract_id=payload.service_contract_id,
+            parent_order_id=payload.parent_order_id,
         )
         db.commit()
         db.refresh(order)
         return order
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.get("/next-number", response_model=NextOrderNumberResponse)
+def get_next_order_number(
+    site_id: UUID = Query(...),
+    order_kind: ServiceOrderKind = Query(ServiceOrderKind.WORKSHOP_INTAKE),
+    current_user: User = Depends(RequirePermission(ORDERS_READ)),
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        preview = peek_next_order_number(
+            db,
+            company_id=current_user.company_id,
+            site_id=site_id,
+            order_kind=order_kind,
+        )
+        return {"order_number": preview, "order_kind": order_kind, "site_id": site_id}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 

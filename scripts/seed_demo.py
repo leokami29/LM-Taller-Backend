@@ -101,6 +101,7 @@ def seed_demo(*, force: bool = False) -> None:
         print(f"    - tecnico2@{DEMO_EMAIL_DOMAIN} (technician)")
         print(f"    - visitante@{DEMO_EMAIL_DOMAIN} (viewer)")
         print(f"    - baja@{DEMO_EMAIL_DOMAIN} (viewer) [INACTIVA]")
+        print(f"    - portal.cliente@{DEMO_EMAIL_DOMAIN} (portal cliente, slug demo-central)")
         print("  Cuentas taller secundario (902):")
         print(f"    - admin.norte@{DEMO_EMAIL_DOMAIN} (admin)")
         print(f"    - recepcion.norte@{DEMO_EMAIL_DOMAIN} (reception)")

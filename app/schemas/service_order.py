@@ -1,11 +1,17 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.enums import CostLineCategory, OrderPriority, OrderStatus
+from app.core.enums import CostLineCategory, OrderPriority, OrderStatus, ServiceOrderKind
+
+
+class NextOrderNumberResponse(BaseModel):
+    order_number: str
+    order_kind: ServiceOrderKind
+    site_id: UUID
 
 
 class ServiceOrderCreate(BaseModel):
@@ -13,9 +19,13 @@ class ServiceOrderCreate(BaseModel):
     current_customer_id: UUID
     original_owner_id: Optional[UUID] = None
     problem_description: str = Field(..., min_length=5)
+    order_kind: ServiceOrderKind = ServiceOrderKind.WORKSHOP_INTAKE
     priority: OrderPriority = OrderPriority.MEDIUM
     device_condition_on_entry: Optional[str] = None
-    site_id: Optional[UUID] = None
+    service_contract_id: Optional[UUID] = None
+    parent_order_id: Optional[UUID] = None
+    portal_submitted_json: Optional[dict[str, Any]] = None
+    site_id: UUID
     received_at: Optional[datetime] = None
     received_by_id: Optional[UUID] = None
     customer_po_number: Optional[str] = Field(None, max_length=64)
@@ -41,6 +51,9 @@ class ServiceOrderUpdate(BaseModel):
     customer_po_number: Optional[str] = Field(None, max_length=64)
     sales_area: Optional[str] = Field(None, max_length=120)
     device_condition_on_entry: Optional[str] = None
+    service_contract_id: Optional[UUID] = None
+    parent_order_id: Optional[UUID] = None
+    portal_submitted_json: Optional[dict[str, Any]] = None
 
 
 class ServiceOrderStatusPatch(BaseModel):
@@ -82,6 +95,7 @@ class ServiceOrderResponse(BaseModel):
     id: UUID
     company_id: UUID
     order_number: str
+    order_kind: ServiceOrderKind
     equipment_id: UUID
     current_customer_id: UUID
     original_owner_id: Optional[UUID]
@@ -104,3 +118,6 @@ class ServiceOrderResponse(BaseModel):
     customer_po_number: Optional[str] = None
     sales_area: Optional[str] = None
     device_condition_on_entry: Optional[str] = None
+    service_contract_id: Optional[UUID] = None
+    parent_order_id: Optional[UUID] = None
+    portal_submitted_json: Optional[dict[str, Any]] = None

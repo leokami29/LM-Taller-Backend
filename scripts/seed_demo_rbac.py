@@ -41,7 +41,20 @@ def _get_or_create_site(session: Session, company_id, *, name: str, location: st
     row = session.scalar(select(Site).where(Site.company_id == company_id, Site.name == name))
     if row:
         return row
-    s = Site(company_id=company_id, name=name, location=location or None, is_active=True)
+    from app.services.site_code_service import derive_site_code
+
+    existing = {
+        row[0]
+        for row in session.query(Site.code).filter(Site.company_id == company_id).all()
+    }
+    code = derive_site_code(name, existing)
+    s = Site(
+        company_id=company_id,
+        code=code,
+        name=name,
+        location=location or None,
+        is_active=True,
+    )
     session.add(s)
     session.flush()
     return s

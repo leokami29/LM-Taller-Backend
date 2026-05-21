@@ -9,11 +9,13 @@ from app.core.enums import RoleChangeStatus, UserRole
 
 class SiteCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
+    code: Optional[str] = Field(None, min_length=2, max_length=8)
     location: Optional[str] = None
 
 
 class SiteUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=120)
+    code: Optional[str] = Field(None, min_length=2, max_length=8)
     location: Optional[str] = None
     is_active: Optional[bool] = None
 
@@ -23,6 +25,7 @@ class SiteResponse(BaseModel):
 
     id: UUID
     company_id: UUID
+    code: str
     name: str
     location: Optional[str]
     is_active: bool

@@ -1,15 +1,22 @@
 from datetime import datetime, timedelta, timezone
 
-from app.core.enums import UserRole
+from app.core.enums import ServiceOrderKind, UserRole
+from app.core.order_number import parse_order_number
 from app.core.security import SecurityUtils
 from app.db.models.customer import Customer
 from app.db.models.equipment import Equipment
 from app.db.models.rbac import Site
+from app.db.models.service_contract import ServiceContract
 from app.db.models.user import User
+
+
+def _default_site(db_session, company):
+    return db_session.query(Site).filter(Site.company_id == company.id).one()
 
 
 def test_order_invalid_status_transition(client, db_session, seed_company_and_admin):
     company, admin = seed_company_and_admin
+    site = _default_site(db_session, company)
     tech = User(
         company_id=company.id,
         email="tech2@test.com",
@@ -48,10 +55,12 @@ def test_order_invalid_status_transition(client, db_session, seed_company_and_ad
             "equipment_id": str(equipment.id),
             "current_customer_id": str(customer.id),
             "problem_description": "No enciende",
+            "site_id": str(site.id),
         },
     )
     assert order_res.status_code == 201
     order_id = order_res.json()["id"]
+    assert order_res.json()["order_number"].startswith("MAIN-IT-")
 
     tech_token = client.post(
         "/api/v1/auth/login",
@@ -75,6 +84,7 @@ def test_order_invalid_status_transition(client, db_session, seed_company_and_ad
 
 def test_order_cost_lines_crud_and_totals(client, db_session, seed_company_and_admin):
     company, admin = seed_company_and_admin
+    site = _default_site(db_session, company)
     customer = Customer(
         company_id=company.id,
         first_name="Luis",
@@ -106,11 +116,13 @@ def test_order_cost_lines_crud_and_totals(client, db_session, seed_company_and_a
             "equipment_id": str(equipment.id),
             "current_customer_id": str(customer.id),
             "problem_description": "Prueba líneas de costo",
+            "site_id": str(site.id),
         },
     )
     assert order_res.status_code == 201
     order_id = order_res.json()["id"]
     assert order_res.json()["total_cost"] == "0.00"
+    assert "MAIN-IT-" in order_res.json()["order_number"]
 
     r1 = client.post(
         f"/api/v1/orders/{order_id}/cost-lines",
@@ -167,7 +179,13 @@ def test_order_cost_lines_crud_and_totals(client, db_session, seed_company_and_a
 
 def test_order_intake_fields(client, db_session, seed_company_and_admin):
     company, admin = seed_company_and_admin
-    site = Site(company_id=company.id, name="Sede Central", location="Bogotá", is_active=True)
+    site = Site(
+        company_id=company.id,
+        code="CENTRAL",
+        name="Sede Central",
+        location="Bogotá",
+        is_active=True,
+    )
     tech = User(
         company_id=company.id,
         email="tech.intake@test.com",
@@ -242,8 +260,162 @@ def test_order_intake_fields(client, db_session, seed_company_and_admin):
             "equipment_id": str(equipment.id),
             "current_customer_id": str(customer.id),
             "problem_description": "Otra orden",
+            "site_id": str(site.id),
             "received_at": received_at.isoformat(),
             "estimated_completion": (received_at - timedelta(hours=1)).isoformat(),
         },
     )
     assert bad.status_code == 400
+
+
+def test_order_numbering_sequences_by_site_and_kind(client, db_session, seed_company_and_admin):
+    company, admin = seed_company_and_admin
+    site_a = Site(company_id=company.id, code="BOG", name="Bogotá", is_active=True)
+    site_b = Site(company_id=company.id, code="MED", name="Medellín", is_active=True)
+    customer = Customer(
+        company_id=company.id,
+        first_name="Seq",
+        last_name="Test",
+        email="seq@test.com",
+    )
+    equipment = Equipment(
+        company_id=company.id,
+        serial_number="SN-SEQ-1",
+        brand="A",
+        model="B",
+    )
+    db_session.add_all([site_a, site_b, customer, equipment])
+    db_session.commit()
+    db_session.refresh(site_a)
+    db_session.refresh(site_b)
+    db_session.refresh(customer)
+    db_session.refresh(equipment)
+
+    token = client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@test.com", "password": "password123"},
+    ).json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    base = {
+        "equipment_id": str(equipment.id),
+        "current_customer_id": str(customer.id),
+        "problem_description": "Orden de prueba secuencia",
+    }
+
+    r1 = client.post(
+        "/api/v1/orders/",
+        headers=headers,
+        json={**base, "site_id": str(site_a.id), "order_kind": "workshop_intake"},
+    )
+    r2 = client.post(
+        "/api/v1/orders/",
+        headers=headers,
+        json={**base, "site_id": str(site_a.id), "order_kind": "workshop_intake"},
+    )
+    r3 = client.post(
+        "/api/v1/orders/",
+        headers=headers,
+        json={**base, "site_id": str(site_a.id), "order_kind": "workshop_intake_contract"},
+    )
+    r4 = client.post(
+        "/api/v1/orders/",
+        headers=headers,
+        json={**base, "site_id": str(site_b.id), "order_kind": "workshop_intake"},
+    )
+    assert r1.status_code == 201, r1.text
+    assert r2.status_code == 201, r2.text
+    assert r3.status_code == 400
+    assert r4.status_code == 201, r4.text
+
+    n1 = r1.json()["order_number"]
+    n2 = r2.json()["order_number"]
+    n4 = r4.json()["order_number"]
+    p1 = parse_order_number(n1)
+    p2 = parse_order_number(n2)
+    p4 = parse_order_number(n4)
+    assert p1 and p2 and p4
+    assert p1.site_code == "BOG" and p1.kind_prefix == "IT" and p1.sequence == 1
+    assert p2.sequence == 2
+    assert n4.startswith("MED-IT-")
+    assert p4.sequence == 1
+
+    preview = client.get(
+        "/api/v1/orders/next-number",
+        headers=headers,
+        params={"site_id": str(site_a.id), "order_kind": "workshop_intake"},
+    )
+    assert preview.status_code == 200
+    preview_parsed = parse_order_number(preview.json()["order_number"])
+    assert preview_parsed is not None
+    assert preview_parsed.sequence == 3
+    assert preview_parsed.kind_prefix == "IT"
+
+
+def test_contract_order_requires_contract(client, db_session, seed_company_and_admin):
+    company, _admin = seed_company_and_admin
+    site = _default_site(db_session, company)
+    customer = Customer(
+        company_id=company.id,
+        first_name="Contr",
+        last_name="Acto",
+        email="contr@test.com",
+    )
+    equipment = Equipment(
+        company_id=company.id,
+        serial_number="SN-CON-1",
+        brand="X",
+        model="Y",
+    )
+    db_session.add_all([customer, equipment])
+    db_session.commit()
+    db_session.refresh(customer)
+    db_session.refresh(equipment)
+
+    token = client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@test.com", "password": "password123"},
+    ).json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    missing = client.post(
+        "/api/v1/orders/",
+        headers=headers,
+        json={
+            "equipment_id": str(equipment.id),
+            "current_customer_id": str(customer.id),
+            "problem_description": "Orden contrato sin id",
+            "site_id": str(site.id),
+            "order_kind": "workshop_intake_contract",
+        },
+    )
+    assert missing.status_code == 400
+
+    site = _default_site(db_session, company)
+    contract = ServiceContract(
+        company_id=company.id,
+        customer_id=customer.id,
+        contract_number="POL-001",
+        name="Póliza demo",
+        default_site_id=site.id,
+        allowed_order_kinds=["workshop_intake_contract"],
+        is_active=True,
+    )
+    db_session.add(contract)
+    db_session.commit()
+    db_session.refresh(contract)
+
+    ok = client.post(
+        "/api/v1/orders/",
+        headers=headers,
+        json={
+            "equipment_id": str(equipment.id),
+            "current_customer_id": str(customer.id),
+            "problem_description": "Orden con contrato válido",
+            "site_id": str(site.id),
+            "order_kind": "workshop_intake_contract",
+            "service_contract_id": str(contract.id),
+        },
+    )
+    assert ok.status_code == 201, ok.text
+    assert ok.json()["order_number"].startswith("MAIN-ITC-")
+    assert ok.json()["order_kind"] == "workshop_intake_contract"

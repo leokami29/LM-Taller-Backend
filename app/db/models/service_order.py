@@ -5,11 +5,11 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.dt import utc_now
-from app.core.enums import CostLineCategory, OrderPriority, OrderStatus
+from app.core.enums import CostLineCategory, OrderPriority, OrderStatus, ServiceOrderKind
 from app.db.base import Base
 
 if TYPE_CHECKING:
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from app.db.models.customer import Customer
     from app.db.models.equipment import Equipment
     from app.db.models.rbac import Site
+    from app.db.models.service_contract import ServiceContract
     from app.db.models.user import User
 
 
@@ -29,11 +30,19 @@ class ServiceOrder(Base):
         Index("ix_service_orders_current_customer_id", "current_customer_id"),
         Index("ix_service_orders_assigned_to_id", "assigned_to_id"),
         Index("ix_service_orders_site_id", "site_id"),
+        Index("ix_service_orders_company_order_kind", "company_id", "order_kind"),
+        Index("ix_service_orders_service_contract_id", "service_contract_id"),
+        Index("ix_service_orders_parent_order_id", "parent_order_id"),
     )
 
     id: Mapped[Any] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     company_id: Mapped[Any] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
     order_number: Mapped[str] = mapped_column(String(32), nullable=False)
+    order_kind: Mapped[ServiceOrderKind] = mapped_column(
+        SAEnum(ServiceOrderKind, values_callable=lambda x: [e.value for e in x], native_enum=False),
+        default=ServiceOrderKind.WORKSHOP_INTAKE,
+        nullable=False,
+    )
     equipment_id: Mapped[Any] = mapped_column(UUID(as_uuid=True), ForeignKey("equipment.id"), nullable=False)
     current_customer_id: Mapped[Any] = mapped_column(UUID(as_uuid=True), ForeignKey("customers.id"), nullable=False)
     original_owner_id: Mapped[Any | None] = mapped_column(UUID(as_uuid=True), ForeignKey("customers.id"))
@@ -64,8 +73,21 @@ class ServiceOrder(Base):
     customer_po_number: Mapped[str | None] = mapped_column(String(64))
     sales_area: Mapped[str | None] = mapped_column(String(120))
     device_condition_on_entry: Mapped[str | None] = mapped_column(Text)
+    service_contract_id: Mapped[Any | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("service_contracts.id")
+    )
+    parent_order_id: Mapped[Any | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("service_orders.id")
+    )
+    portal_submitted_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
     company: Mapped["Company"] = relationship("Company", back_populates="service_orders")
+    service_contract: Mapped["ServiceContract | None"] = relationship(
+        "ServiceContract", back_populates="service_orders"
+    )
+    parent_order: Mapped["ServiceOrder | None"] = relationship(
+        "ServiceOrder", remote_side="ServiceOrder.id", foreign_keys=[parent_order_id]
+    )
     site: Mapped["Site | None"] = relationship("Site")
     equipment: Mapped["Equipment"] = relationship("Equipment")
     current_customer: Mapped["Customer"] = relationship("Customer", foreign_keys=[current_customer_id])

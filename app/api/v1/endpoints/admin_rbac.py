@@ -73,7 +73,16 @@ def create_site(
     ctx: PermissionContext = Depends(get_permission_context),
     _: User = Depends(RequirePermission(ADMIN_USERS)),
 ) -> Site:
-    site = Site(company_id=ctx.company_id, name=payload.name, location=payload.location)
+    from app.services.site_code_service import derive_site_code, validate_site_code
+
+    existing = {
+        row[0]
+        for row in db.query(Site.code).filter(Site.company_id == ctx.company_id).all()
+    }
+    code = validate_site_code(payload.code) if payload.code else derive_site_code(payload.name, existing)
+    if code in existing:
+        raise HTTPException(status_code=400, detail="Ya existe una sede con ese código")
+    site = Site(company_id=ctx.company_id, code=code, name=payload.name, location=payload.location)
     db.add(site)
     db.commit()
     db.refresh(site)
@@ -98,10 +107,23 @@ def update_site(
     _: User = Depends(RequirePermission(ADMIN_USERS)),
     ctx: PermissionContext = Depends(get_permission_context),
 ) -> Site:
+    from app.services.site_code_service import validate_site_code
+
     site = db.query(Site).filter(Site.id == site_id, Site.company_id == ctx.company_id).first()
     if not site:
         raise HTTPException(status_code=404, detail="Sede no encontrada")
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    if "code" in data and data["code"] is not None:
+        new_code = validate_site_code(data["code"])
+        clash = (
+            db.query(Site.id)
+            .filter(Site.company_id == ctx.company_id, Site.code == new_code, Site.id != site_id)
+            .first()
+        )
+        if clash:
+            raise HTTPException(status_code=400, detail="Ya existe una sede con ese código")
+        data["code"] = new_code
+    for k, v in data.items():
         setattr(site, k, v)
     db.commit()
     db.refresh(site)

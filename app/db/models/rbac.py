@@ -23,11 +23,13 @@ class Site(Base):
     __tablename__ = "sites"
     __table_args__ = (
         UniqueConstraint("company_id", "name", name="uq_sites_company_name"),
+        UniqueConstraint("company_id", "code", name="uq_sites_company_code"),
         Index("ix_sites_company_id", "company_id"),
     )
 
     id: Mapped[Any] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     company_id: Mapped[Any] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
+    code: Mapped[str] = mapped_column(String(8), nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     location: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

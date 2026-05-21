@@ -258,10 +258,24 @@ def _apply_site(ctx: SyncContext, mutation: AdminMutation) -> AdminPushItemResul
     if mutation.op == "create":
         if site:
             return _applied(mutation)
+        from app.services.site_code_service import derive_site_code, validate_site_code
+
+        site_name = str(mutation.payload.get("name") or "Nueva sede")
+        existing = {
+            row[0]
+            for row in ctx.db.query(Site.code).filter(Site.company_id == ctx.company_id).all()
+        }
+        raw_code = mutation.payload.get("code")
+        code = (
+            validate_site_code(str(raw_code))
+            if raw_code
+            else derive_site_code(site_name, existing)
+        )
         site = Site(
             id=mutation.entity_id,
             company_id=ctx.company_id,
-            name=str(mutation.payload.get("name") or "Nueva sede"),
+            code=code,
+            name=site_name,
             location=mutation.payload.get("location"),
             is_active=bool(mutation.payload.get("is_active", True)),
             updated_at=mutation.updated_at,

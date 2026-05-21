@@ -11,6 +11,9 @@ from app.api.v1.endpoints import (
     inventory,
     me,
     orders,
+    service_contracts,
+    portal_users,
+    portal,
     license,
     sync_admin,
     tenant_events,
@@ -27,6 +30,9 @@ router.include_router(admin_rbac.router)
 router.include_router(customers.router)
 router.include_router(equipment.router)
 router.include_router(orders.router)
+router.include_router(service_contracts.router)
+router.include_router(portal_users.router)
+router.include_router(portal.router)
 router.include_router(inventory.router)
 router.include_router(analytics.router)
 router.include_router(license.router)

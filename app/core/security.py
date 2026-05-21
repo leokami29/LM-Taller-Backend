@@ -18,6 +18,9 @@ TOKEN_USE_ACCESS = "access"
 TOKEN_USE_REFRESH = "refresh"
 TYP_TENANT = "tenant"
 TYP_PLATFORM = "platform"
+TYP_PORTAL = "portal"
+
+portal_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/portal/auth/token")
 
 
 class SecurityUtils:
@@ -155,4 +158,40 @@ class SecurityUtils:
         return SecurityUtils.create_refresh_token(
             data,
             expires_delta=timedelta(days=session.platform_refresh_token_days),
+        )
+
+    @staticmethod
+    def create_portal_access_token(
+        portal_user_id: UUID,
+        company_id: UUID,
+        customer_id: UUID,
+    ) -> str:
+        session = get_session_settings()
+        return SecurityUtils.create_access_token(
+            {
+                "sub": str(portal_user_id),
+                "typ": TYP_PORTAL,
+                "company_id": str(company_id),
+                "customer_id": str(customer_id),
+                "token_use": TOKEN_USE_ACCESS,
+            },
+            expires_delta=timedelta(minutes=session.tenant_access_token_minutes),
+        )
+
+    @staticmethod
+    def create_portal_refresh_token(
+        portal_user_id: UUID,
+        company_id: UUID,
+        customer_id: UUID,
+    ) -> str:
+        session = get_session_settings()
+        return SecurityUtils.create_refresh_token(
+            {
+                "sub": str(portal_user_id),
+                "typ": TYP_PORTAL,
+                "rtyp": TYP_PORTAL,
+                "company_id": str(company_id),
+                "customer_id": str(customer_id),
+            },
+            expires_delta=timedelta(days=session.tenant_refresh_token_days),
         )

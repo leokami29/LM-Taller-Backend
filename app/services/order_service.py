@@ -6,12 +6,21 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.dt import utc_now
-from app.core.enums import CostLineCategory, OrderStatus
+from app.core.enums import (
+    CostLineCategory,
+    OrderStatus,
+    ServiceOrderKind,
+    is_contract_order_kind,
+    is_workshop_order_kind,
+)
 from app.core.exceptions import InvalidOrderTransitionError
+from app.core.order_number import format_order_number, parse_order_number
 from app.db.models.company import Company
 from app.db.models.customer import Customer
 from app.db.models.equipment import Equipment
+from app.db.models.order_number_sequence import OrderNumberSequence
 from app.db.models.rbac import Site
+from app.db.models.service_contract import ServiceContract
 from app.db.models.service_order import ServiceOrder, ServiceOrderCostLine, ServiceOrderTimeline
 from app.db.models.user import User
 
@@ -66,18 +75,122 @@ def recompute_total_cost(db: Session, order: ServiceOrder) -> None:
     order.total_cost = parts + labor + other
 
 
-def allocate_order_number(db: Session, company_id) -> str:
-    company = (
-        db.query(Company)
-        .filter(Company.id == company_id)
+def allocate_order_number(
+    db: Session,
+    *,
+    company_id,
+    site: Site,
+    order_kind: ServiceOrderKind,
+) -> str:
+    """Reserva el siguiente número para sede + tipo (transacción con FOR UPDATE)."""
+    if not site.code:
+        raise ValueError("La sede no tiene código configurado")
+    row = (
+        db.query(OrderNumberSequence)
+        .filter(
+            OrderNumberSequence.company_id == company_id,
+            OrderNumberSequence.site_id == site.id,
+            OrderNumberSequence.order_kind == order_kind,
+        )
         .with_for_update()
-        .one()
+        .one_or_none()
     )
-    n = int(company.next_order_number)
-    order_number = f"ORD-{n:06d}"
-    company.next_order_number = n + 1
-    db.add(company)
-    return order_number
+    if row is None:
+        row = OrderNumberSequence(
+            company_id=company_id,
+            site_id=site.id,
+            order_kind=order_kind,
+            next_value=1,
+        )
+        db.add(row)
+        db.flush()
+        row = (
+            db.query(OrderNumberSequence)
+            .filter(
+                OrderNumberSequence.company_id == company_id,
+                OrderNumberSequence.site_id == site.id,
+                OrderNumberSequence.order_kind == order_kind,
+            )
+            .with_for_update()
+            .one()
+        )
+    n = int(row.next_value)
+    row.next_value = n + 1
+    db.add(row)
+    year = utc_now().year
+    return format_order_number(site_code=site.code, order_kind=order_kind, year=year, sequence=n)
+
+
+def peek_next_order_number(
+    db: Session,
+    *,
+    company_id,
+    site_id,
+    order_kind: ServiceOrderKind,
+) -> str:
+    """Vista previa del próximo número sin reservarlo."""
+    site = (
+        db.query(Site)
+        .filter(Site.id == site_id, Site.company_id == company_id, Site.is_active.is_(True))
+        .first()
+    )
+    if not site:
+        raise ValueError("Sede no válida")
+    if not site.code:
+        raise ValueError("La sede no tiene código configurado")
+    row = (
+        db.query(OrderNumberSequence.next_value)
+        .filter(
+            OrderNumberSequence.company_id == company_id,
+            OrderNumberSequence.site_id == site_id,
+            OrderNumberSequence.order_kind == order_kind,
+        )
+        .scalar()
+    )
+    n = int(row or 1)
+    year = utc_now().year
+    return format_order_number(site_code=site.code, order_kind=order_kind, year=year, sequence=n)
+
+
+def _sync_sequences_from_existing_orders(db: Session, *, company_id) -> None:
+    """Tras migración: alinea secuencias con órdenes ya creadas en formato nuevo."""
+    orders = (
+        db.query(ServiceOrder.order_number, ServiceOrder.site_id, ServiceOrder.order_kind)
+        .filter(ServiceOrder.company_id == company_id)
+        .all()
+    )
+    max_by_key: dict[tuple, int] = {}
+    for order_number, site_id, order_kind in orders:
+        if site_id is None:
+            continue
+        parsed = parse_order_number(order_number)
+        if parsed is None:
+            continue
+        key = (site_id, order_kind)
+        max_by_key[key] = max(max_by_key.get(key, 0), parsed.sequence)
+    for (site_id, order_kind), max_seq in max_by_key.items():
+        row = (
+            db.query(OrderNumberSequence)
+            .filter(
+                OrderNumberSequence.company_id == company_id,
+                OrderNumberSequence.site_id == site_id,
+                OrderNumberSequence.order_kind == order_kind,
+            )
+            .one_or_none()
+        )
+        next_needed = max_seq + 1
+        if row is None:
+            db.add(
+                OrderNumberSequence(
+                    company_id=company_id,
+                    site_id=site_id,
+                    order_kind=order_kind,
+                    next_value=next_needed,
+                )
+            )
+        elif row.next_value < next_needed:
+            row.next_value = next_needed
+            db.add(row)
 
 
 def assert_transition_allowed(current: OrderStatus, new: OrderStatus) -> None:
@@ -107,7 +220,51 @@ def _assert_company_site(db: Session, *, company_id, site_id) -> Site:
     )
     if not site:
         raise ValueError("Sede no válida")
+    if not site.code:
+        raise ValueError("La sede no tiene código configurado")
     return site
+
+
+def _assert_service_contract(
+    db: Session,
+    *,
+    company_id,
+    contract_id,
+    customer_id,
+) -> ServiceContract:
+    contract = (
+        db.query(ServiceContract)
+        .filter(
+            ServiceContract.id == contract_id,
+            ServiceContract.company_id == company_id,
+            ServiceContract.is_active.is_(True),
+        )
+        .first()
+    )
+    if not contract:
+        raise ValueError("Contrato de servicio no encontrado")
+    if contract.customer_id != customer_id:
+        raise ValueError("El contrato no pertenece al cliente de la orden")
+    return contract
+
+
+def _assert_parent_order(
+    db: Session,
+    *,
+    company_id,
+    parent_order_id,
+    current_customer_id,
+) -> ServiceOrder:
+    parent = (
+        db.query(ServiceOrder)
+        .filter(ServiceOrder.id == parent_order_id, ServiceOrder.company_id == company_id)
+        .first()
+    )
+    if not parent:
+        raise ValueError("Orden padre no encontrada")
+    if parent.current_customer_id != current_customer_id:
+        raise ValueError("La orden padre debe ser del mismo cliente")
+    return parent
 
 
 def create_service_order(
@@ -120,15 +277,22 @@ def create_service_order(
     problem_description: str,
     priority,
     created_by_id,
+    order_kind: ServiceOrderKind = ServiceOrderKind.WORKSHOP_INTAKE,
+    site_id: UUID,
     device_condition_on_entry: Optional[str] = None,
-    site_id: Optional[UUID] = None,
     received_at: Optional[datetime] = None,
     received_by_id: Optional[UUID] = None,
     customer_po_number: Optional[str] = None,
     sales_area: Optional[str] = None,
     assigned_to_id: Optional[UUID] = None,
     estimated_completion: Optional[datetime] = None,
+    service_contract_id: Optional[UUID] = None,
+    parent_order_id: Optional[UUID] = None,
+    portal_submitted_json: Optional[dict] = None,
 ) -> ServiceOrder:
+    if not site_id:
+        raise ValueError("La sede es obligatoria para numerar la orden")
+
     equipment = (
         db.query(Equipment)
         .filter(Equipment.id == equipment_id, Equipment.company_id == company_id)
@@ -154,8 +318,27 @@ def create_service_order(
         if not oo:
             raise ValueError("Propietario original no encontrado")
 
-    if site_id:
-        _assert_company_site(db, company_id=company_id, site_id=site_id)
+    site = _assert_company_site(db, company_id=company_id, site_id=site_id)
+
+    if is_contract_order_kind(order_kind):
+        if not service_contract_id:
+            raise ValueError("Las órdenes por contrato requieren un contrato de servicio")
+        _assert_service_contract(
+            db,
+            company_id=company_id,
+            contract_id=service_contract_id,
+            customer_id=current_customer_id,
+        )
+    elif service_contract_id:
+        raise ValueError("Solo las órdenes por contrato pueden asociar un contrato")
+
+    if parent_order_id:
+        _assert_parent_order(
+            db,
+            company_id=company_id,
+            parent_order_id=parent_order_id,
+            current_customer_id=current_customer_id,
+        )
 
     reception_user_id = received_by_id or created_by_id
     if reception_user_id:
@@ -164,46 +347,55 @@ def create_service_order(
     if assigned_to_id:
         _assert_company_user(db, company_id=company_id, user_id=assigned_to_id)
 
-    intake_at = received_at or utc_now()
-    if estimated_completion and estimated_completion < intake_at:
-        raise ValueError("La fecha prometida no puede ser anterior al ingreso")
+    intake_at: datetime | None = None
+    if is_workshop_order_kind(order_kind):
+        intake_at = received_at or utc_now()
+        if estimated_completion and estimated_completion < intake_at:
+            raise ValueError("La fecha prometida no puede ser anterior al ingreso")
+    elif estimated_completion and received_at and estimated_completion < received_at:
+        raise ValueError("La fecha programada no puede ser anterior al registro")
 
-    order_number = allocate_order_number(db, company_id)
+    order_number = allocate_order_number(
+        db, company_id=company_id, site=site, order_kind=order_kind
+    )
 
     order = ServiceOrder(
         company_id=company_id,
         order_number=order_number,
+        order_kind=order_kind,
         equipment_id=equipment_id,
         current_customer_id=current_customer_id,
         original_owner_id=original_owner_id,
         status=OrderStatus.RECEIVED,
         priority=priority,
         problem_description=problem_description,
-        device_condition_on_entry=device_condition_on_entry,
+        device_condition_on_entry=device_condition_on_entry if is_workshop_order_kind(order_kind) else None,
         cost_parts=Decimal("0"),
         cost_labor=Decimal("0"),
         total_cost=Decimal("0"),
         created_by_id=created_by_id,
         site_id=site_id,
         received_at=intake_at,
-        received_by_id=reception_user_id,
-        customer_po_number=(customer_po_number or "").strip() or None,
-        sales_area=(sales_area or "").strip() or None,
+        received_by_id=reception_user_id if is_workshop_order_kind(order_kind) else None,
+        customer_po_number=customer_po_number,
+        sales_area=sales_area,
         assigned_to_id=assigned_to_id,
         estimated_completion=estimated_completion,
+        service_contract_id=service_contract_id,
+        parent_order_id=parent_order_id,
+        portal_submitted_json=portal_submitted_json,
     )
-    recompute_total_cost(db, order)
     db.add(order)
     db.flush()
 
-    timeline = ServiceOrderTimeline(
+    entry = ServiceOrderTimeline(
         service_order_id=order.id,
         old_status=None,
         new_status=OrderStatus.RECEIVED.value,
         changed_by_id=created_by_id,
         notes="Orden creada",
     )
-    db.add(timeline)
+    db.add(entry)
     return order
 
 
@@ -234,12 +426,6 @@ def change_order_status(
     return order
 
 
-def peek_next_order_number(db: Session, company_id) -> int:
-    """Valor actual del contador de órdenes (sin reservar número)."""
-    n = db.query(Company.next_order_number).filter(Company.id == company_id).scalar()
-    return int(n or 1)
-
-
 def get_cost_line_for_order(
     db: Session, *, company_id, order_id: UUID, line_id: UUID
 ) -> ServiceOrderCostLine | None:
@@ -260,15 +446,15 @@ def add_cost_line(
     order: ServiceOrder,
     category: CostLineCategory,
     amount: Decimal,
-    description: Optional[str] = None,
-    sort_order: int = 0,
+    description: Optional[str],
+    sort_order: int,
 ) -> ServiceOrderCostLine:
     line = ServiceOrderCostLine(
         company_id=order.company_id,
         service_order_id=order.id,
         category=category,
-        description=description,
         amount=amount,
+        description=description,
         sort_order=sort_order,
     )
     db.add(line)
@@ -281,8 +467,8 @@ def add_cost_line(
 def update_cost_line(
     db: Session,
     *,
-    order: ServiceOrder,
     line: ServiceOrderCostLine,
+    order: ServiceOrder,
     category: Optional[CostLineCategory] = None,
     amount: Optional[Decimal] = None,
     description: Optional[str] = None,
@@ -297,13 +483,12 @@ def update_cost_line(
     if sort_order is not None:
         line.sort_order = sort_order
     db.add(line)
-    db.flush()
     recompute_total_cost(db, order)
     db.add(order)
     return line
 
 
-def delete_cost_line(db: Session, *, order: ServiceOrder, line: ServiceOrderCostLine) -> None:
+def delete_cost_line(db: Session, *, line: ServiceOrderCostLine, order: ServiceOrder) -> None:
     db.delete(line)
     db.flush()
     recompute_total_cost(db, order)
