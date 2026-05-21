@@ -17,12 +17,10 @@ from app.core.permissions import (
 from app.dependencies import RequirePermission, ensure_not_viewer_for_mutation
 from app.db.models.customer import Customer
 from app.db.models.rbac import Site
-from app.db.models.service_order import ServiceOrder, ServiceOrderCostLine
+from app.db.models.service_order import ServiceOrder, ServiceOrderCostLine, ServiceOrderTimeline
 from app.db.models.user import User
 from app.db.session import get_db
 from app.schemas.common import PaginatedResponse
-from app.db.models.audit_log import AuditLog
-from app.schemas.rbac import AuditLogResponse
 from app.db.models.inventory import InventoryMovement
 from app.schemas.inventory import InventoryMovementResponse
 from app.schemas.service_order import (
@@ -33,6 +31,7 @@ from app.schemas.service_order import (
     ServiceOrderCreate,
     ServiceOrderResponse,
     ServiceOrderStatusPatch,
+    OrderTimelineEntryResponse,
     ServiceOrderUpdate,
 )
 from app.services.permission_service import PermissionService
@@ -420,12 +419,37 @@ def delete_order(
     return {"message": "Orden eliminada", "status": "success"}
 
 
-@router.get("/{order_id}/timeline", response_model=list[AuditLogResponse])
+def _timeline_entry_response(entry: ServiceOrderTimeline) -> OrderTimelineEntryResponse:
+    if entry.old_status is None:
+        action = "Orden creada"
+    else:
+        action = f"Estado: {entry.old_status} → {entry.new_status}"
+
+    changes: dict = {}
+    if entry.old_status is not None:
+        changes["old_status"] = entry.old_status
+        changes["new_status"] = entry.new_status
+    if entry.notes:
+        changes["notes"] = entry.notes
+    if entry.time_spent_seconds is not None:
+        changes["time_spent_seconds"] = entry.time_spent_seconds
+    if entry.changed_by_id is not None:
+        changes["changed_by_id"] = str(entry.changed_by_id)
+
+    return OrderTimelineEntryResponse(
+        id=entry.id,
+        action=action,
+        timestamp=entry.changed_at,
+        changes=changes or None,
+    )
+
+
+@router.get("/{order_id}/timeline", response_model=list[OrderTimelineEntryResponse])
 def get_order_timeline(
     order_id: UUID,
     current_user: User = Depends(RequirePermission(ORDERS_READ)),
     db: Session = Depends(get_db),
-) -> list[AuditLog]:
+) -> list[OrderTimelineEntryResponse]:
     order = (
         db.query(ServiceOrder)
         .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
@@ -433,12 +457,13 @@ def get_order_timeline(
     )
     if not order:
         raise HTTPException(status_code=404, detail="Orden no encontrada")
-    return (
-        db.query(AuditLog)
-        .filter(AuditLog.resource == "order", AuditLog.resource_id == order_id)
-        .order_by(AuditLog.timestamp.desc())
+    entries = (
+        db.query(ServiceOrderTimeline)
+        .filter(ServiceOrderTimeline.service_order_id == order_id)
+        .order_by(ServiceOrderTimeline.changed_at.desc())
         .all()
     )
+    return [_timeline_entry_response(e) for e in entries]
 
 
 @router.get("/{order_id}/parts", response_model=list[InventoryMovementResponse])

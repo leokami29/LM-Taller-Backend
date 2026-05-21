@@ -121,3 +121,12 @@ class ServiceOrderResponse(BaseModel):
     service_contract_id: Optional[UUID] = None
     parent_order_id: Optional[UUID] = None
     portal_submitted_json: Optional[dict[str, Any]] = None
+
+
+class OrderTimelineEntryResponse(BaseModel):
+    """Historial de estados de la orden (pestaña timeline en UI)."""
+
+    id: UUID
+    action: str
+    timestamp: datetime
+    changes: Optional[dict[str, Any]] = None
