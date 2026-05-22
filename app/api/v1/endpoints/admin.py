@@ -16,6 +16,7 @@ from app.schemas.user import UserAdminCreate, UserPasswordUpdate, UserResponse, 
 from app.schemas.company import CompanyResponse, CompanyUpdate
 from app.services.tenant_config_events import TenantConfigReason, bump_company_config_revision, notify_company_config_changed
 from app.services.permission_service import PermissionService
+from app.utils.helpers import apply_allowed_updates
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -154,8 +155,7 @@ def update_company_user(
             status_code=400,
             detail="Use el flujo de solicitud de cambio de rol para modificar el rol",
         )
-    for k, v in data.items():
-        setattr(user, k, v)
+    apply_allowed_updates(user, data, ("full_name", "phone", "is_active"))
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -168,6 +168,7 @@ def reset_user_password(
     payload: UserPasswordUpdate,
     db: Session = Depends(get_db),
     admin: User = Depends(RequirePermission(ADMIN_USERS)),
+    ctx: PermissionContext = Depends(get_permission_context),
 ) -> User:
     user = (
         db.query(User)
@@ -181,6 +182,16 @@ def reset_user_password(
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    PermissionService(db).log_action(
+        user_id=ctx.user_id,
+        company_id=ctx.company_id,
+        action="user_password_reset",
+        resource="user",
+        resource_id=user.id,
+        request=None,
+        site_id=ctx.site_id,
+    )
     return user
 
 
@@ -199,8 +210,7 @@ def update_own_company(
     if not data:
         return company
 
-    for k, v in data.items():
-        setattr(company, k, v)
+    apply_allowed_updates(company, data, ("name", "address", "phone", "email", "country", "currency"))
         
     revision = bump_company_config_revision(company)
     db.add(company)

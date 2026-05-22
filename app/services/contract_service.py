@@ -13,6 +13,7 @@ from app.db.models.customer import Customer
 from app.db.models.rbac import Site
 from app.db.models.service_contract import ServiceContract
 from app.db.models.service_order import ServiceOrder
+from app.utils.helpers import apply_allowed_updates
 
 
 def _assert_customer(db: Session, *, company_id, customer_id) -> Customer:
@@ -137,6 +138,11 @@ def get_contract_for_company(
     )
 
 
+def delete_contract(db: Session, *, contract: ServiceContract) -> None:
+    contract.is_active = False
+    db.add(contract)
+
+
 def update_contract(
     db: Session,
     *,
@@ -160,8 +166,9 @@ def update_contract(
     vf, vt = data.get("valid_from", contract.valid_from), data.get("valid_to", contract.valid_to)
     if vf and vt and vt < vf:
         raise ValueError("valid_to no puede ser anterior a valid_from")
-    for key, value in data.items():
-        if value is not None and hasattr(contract, key):
-            setattr(contract, key, value)
+    apply_allowed_updates(contract, data, (
+        "contract_number", "name", "contract_kind", "max_orders_per_month",
+        "valid_from", "valid_to", "is_active",
+    ))
     db.add(contract)
     return contract

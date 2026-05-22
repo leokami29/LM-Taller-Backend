@@ -1,6 +1,6 @@
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
@@ -25,10 +25,21 @@ from app.services.auth_service import (
 )
 from app.services.session_policy_service import ResolvedSession
 from app.services.tenant_config_events import read_company_config_revision, read_global_config_revision
+from app.services.rate_limit_service import login_rate_limiter
 from app.tenancy import TenantResolveError
 from app.db.models.company import Company
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _check_rate_limit(request: Request) -> None:
+    ip = request.client.host if request.client else "unknown"
+    limiter = login_rate_limiter()
+    if not limiter.is_allowed(ip):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Demasiados intentos. Intenta de nuevo en 60 segundos.",
+        )
 
 
 class LoginRequest(BaseModel):
@@ -94,16 +105,30 @@ def _authenticate_tenant_user(email: str, password: str, tenant_slug: Optional[s
                 detail="Taller no encontrado o inactivo",
             ) from exc
     else:
+        company_id: Optional[UUID] = None
+        if tenant_slug and tenant_slug.strip():
+            db = SessionLocal()
+            try:
+                company = db.query(Company).filter(Company.name == tenant_slug.strip()).first()
+                if not company:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Taller no encontrado o inactivo",
+                    )
+                company_id = company.id
+            finally:
+                db.close()
         db = SessionLocal()
         try:
-            user = authenticate_user(db, email, password)
+            user = authenticate_user(db, email, password, company_id=company_id)
         finally:
             db.close()
     return user
 
 
 @router.post("/login", response_model=TenantTokenPairResponse)
-def login_json(payload: LoginRequest) -> TenantTokenPairResponse:
+def login_json(payload: LoginRequest, request: Request) -> TenantTokenPairResponse:
+    _check_rate_limit(request)
     user = _authenticate_tenant_user(str(payload.email), payload.password, payload.tenant_slug)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email o contraseña incorrectos")

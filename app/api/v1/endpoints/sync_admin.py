@@ -61,7 +61,7 @@ class AdminMutation(BaseModel):
 
 class AdminPushRequest(BaseModel):
     mutations: list[AdminMutation] = Field(default_factory=list)
-
+    
 
 class AdminPushItemResult(BaseModel):
     mutation_id: UUID

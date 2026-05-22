@@ -46,6 +46,7 @@ from app.services.order_service import (
     recompute_total_cost,
     update_cost_line,
 )
+from app.utils.helpers import apply_allowed_updates
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -370,8 +371,14 @@ def update_order(
             detail="La fecha prometida no puede ser anterior al ingreso",
         )
 
-    for k, v in data.items():
-        setattr(order, k, v)
+    allowed = (
+        "priority", "assigned_to_id", "problem_description", "diagnosis_notes",
+        "estimated_completion", "actual_completion", "cost_parts", "cost_labor",
+        "current_customer_id", "original_owner_id", "site_id", "received_at",
+        "received_by_id", "customer_po_number", "sales_area", "device_condition_on_entry",
+        "service_contract_id", "parent_order_id", "portal_submitted_json",
+    )
+    apply_allowed_updates(order, data, allowed)
     recompute_total_cost(db, order)
     db.add(order)
     db.commit()

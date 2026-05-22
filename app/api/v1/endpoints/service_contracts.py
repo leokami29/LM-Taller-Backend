@@ -1,10 +1,10 @@
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
-from app.core.permissions import CONTRACTS_READ, CONTRACTS_WRITE
+from app.core.permissions import CONTRACTS_DELETE, CONTRACTS_READ, CONTRACTS_WRITE
 from app.dependencies import RequirePermission, get_permission_context, PermissionContext
 from app.db.models.service_contract import ServiceContract
 from app.db.session import get_db
@@ -14,7 +14,7 @@ from app.schemas.service_contract import (
     ServiceContractResponse,
     ServiceContractUpdate,
 )
-from app.services.contract_service import create_contract, get_contract_for_company, update_contract
+from app.services.contract_service import create_contract, delete_contract, get_contract_for_company, update_contract
 
 router = APIRouter(prefix="/service-contracts", tags=["service-contracts"])
 
@@ -96,3 +96,17 @@ def update_service_contract(
         return row
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.delete("/{contract_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_service_contract(
+    contract_id: UUID,
+    ctx: PermissionContext = Depends(RequirePermission(CONTRACTS_DELETE)),
+    db: Session = Depends(get_db),
+) -> Response:
+    row = get_contract_for_company(db, company_id=ctx.company_id, contract_id=contract_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Contrato no encontrado")
+    delete_contract(db, contract=row)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

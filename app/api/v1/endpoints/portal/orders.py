@@ -98,6 +98,10 @@ def portal_create_order(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
+    if submitted is None:
+        submitted = {}
+    submitted["_submitted_by_portal_user_id"] = str(ctx.portal_user_id)
+
     ok, reason = PermissionService(db).can_create_order(ctx.company_id)
     if not ok:
         raise HTTPException(status_code=403, detail=reason)
@@ -116,7 +120,7 @@ def portal_create_order(
             site_id=contract.default_site_id,
             customer_po_number=payload.customer_po_number,
             service_contract_id=contract.id,
-            portal_submitted_json=submitted or None,
+            portal_submitted_json=submitted,
         )
         db.commit()
         db.refresh(order)

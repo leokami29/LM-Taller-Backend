@@ -10,6 +10,7 @@ from app.config import settings
 from app.infrastructure.redis_client import connect_redis, disconnect_redis_async
 from app.middleware.error_handler import register_exception_handlers
 from app.middleware.logging import RequestLoggingMiddleware
+from app.middleware.security_headers import SecurityHeadersMiddleware
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ app = FastAPI(
 register_exception_handlers(app)
 
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

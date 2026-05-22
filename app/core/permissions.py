@@ -23,6 +23,7 @@ ADMIN_USERS = "admin:users"
 ANALYTICS_READ = "analytics:read"
 CONTRACTS_READ = "contracts:read"
 CONTRACTS_WRITE = "contracts:write"
+CONTRACTS_DELETE = "contracts:delete"
 PORTAL_USERS_READ = "portal_users:read"
 PORTAL_USERS_WRITE = "portal_users:write"
 
@@ -47,6 +48,7 @@ TENANT_ROLE_PERMISSIONS: dict[UserRole, frozenset[str]] = {
             ANALYTICS_READ,
             CONTRACTS_READ,
             CONTRACTS_WRITE,
+            CONTRACTS_DELETE,
             PORTAL_USERS_READ,
             PORTAL_USERS_WRITE,
         }

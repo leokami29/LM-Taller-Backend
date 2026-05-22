@@ -9,8 +9,11 @@ from app.db.models.user import User
 from app.services.session_policy_service import ResolvedSession, resolve_tenant_session
 
 
-def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
-    user = db.query(User).filter(User.email == email).first()
+def authenticate_user(db: Session, email: str, password: str, *, company_id: Optional[UUID] = None) -> Optional[User]:
+    q = db.query(User).filter(User.email == email)
+    if company_id:
+        q = q.filter(User.company_id == company_id)
+    user = q.first()
     if not user:
         return None
     if not SecurityUtils.verify_password(password, user.hashed_password):
