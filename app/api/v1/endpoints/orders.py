@@ -64,6 +64,7 @@ def list_orders(
     order_kind: Optional[ServiceOrderKind] = Query(None),
     search: Optional[str] = Query(None, description="Número de orden o descripción"),
     customer_id: Optional[UUID] = Query(None, description="Filtrar por cliente"),
+    equipment_id: Optional[UUID] = Query(None, description="Filtrar por equipo"),
     current_user: User = Depends(RequirePermission(ORDERS_READ)),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -78,6 +79,8 @@ def list_orders(
         q = q.filter(
             or_(ServiceOrder.current_customer_id == customer_id, ServiceOrder.original_owner_id == customer_id)
         )
+    if equipment_id:
+        q = q.filter(ServiceOrder.equipment_id == equipment_id)
     if search:
         term = f"%{search.lower()}%"
         q = q.filter(
