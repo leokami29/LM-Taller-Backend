@@ -26,6 +26,10 @@ from app.core.security import TOKEN_USE_ACCESS, TYP_TENANT, SecurityUtils, oauth
 from app.core.subscription_lifecycle import subscription_is_usable, validate_subscription_period_status
 from app.db.catalog.models import TenantRouting
 from app.db.models.company import Company
+from app.db.models.customer import Customer
+from app.db.models.equipment import Equipment
+from app.db.models.inventory import InventoryItem, InventoryMovement
+from app.db.models.service_order import ServiceOrder
 from app.db.models.rbac import Site, UserSiteRole
 from app.db.models.user import User
 from app.db.session import catalog_session_scope, tenant_session_for_company
@@ -82,6 +86,11 @@ class AdminSyncSnapshot(BaseModel):
     user_site_roles: list[dict[str, Any]]
     entitlements: dict[str, Any]
     license_manifest: SignedLicenseManifest | None = None
+    customers: list[dict[str, Any]] = Field(default_factory=list)
+    equipment: list[dict[str, Any]] = Field(default_factory=list)
+    service_orders: list[dict[str, Any]] = Field(default_factory=list)
+    inventory_items: list[dict[str, Any]] = Field(default_factory=list)
+    inventory_movements: list[dict[str, Any]] = Field(default_factory=list)
 
 
 @dataclass
@@ -144,6 +153,17 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
         .order_by(UserSiteRole.created_at.desc())
         .all()
     )
+    customers = ctx.db.query(Customer).filter(Customer.company_id == ctx.company_id).order_by(Customer.created_at.desc()).all()
+    equipment = ctx.db.query(Equipment).filter(Equipment.company_id == ctx.company_id).order_by(Equipment.created_at.desc()).all()
+    orders = ctx.db.query(ServiceOrder).filter(ServiceOrder.company_id == ctx.company_id).order_by(ServiceOrder.created_at.desc()).all()
+    inv_items = ctx.db.query(InventoryItem).filter(InventoryItem.company_id == ctx.company_id).order_by(InventoryItem.created_at.desc()).all()
+    inv_item_ids = [i.id for i in inv_items]
+    inv_movements = (
+        ctx.db.query(InventoryMovement)
+        .filter(InventoryMovement.inventory_item_id.in_(inv_item_ids))
+        .order_by(InventoryMovement.moved_at.desc())
+        .all()
+    ) if inv_item_ids else []
     svc = PermissionService(ctx.db)
     ent = svc.get_entitlements(ctx.company_id)
     period_end = svc.get_subscription_period_end(ctx.company_id)
@@ -151,9 +171,17 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
     user_rows = [_row(u) for u in users]
     role_rows = [_row(r) for r in roles]
     company_row = _row(company)
+    customer_rows = [_row(c) for c in customers]
+    equipment_rows = [_row(e) for e in equipment]
+    order_rows = [_row(o) for o in orders]
+    item_rows = [_row(i) for i in inv_items]
+    movement_rows = [_row(m) for m in inv_movements]
     return AdminSyncSnapshot(
         company_id=ctx.company_id,
-        cursor=_max_cursor([company_row], site_rows, user_rows, role_rows),
+        cursor=_max_cursor(
+            [company_row], site_rows, user_rows, role_rows,
+            customer_rows, equipment_rows, order_rows, item_rows, movement_rows,
+        ),
         company=company_row,
         sites=site_rows,
         users=user_rows,
@@ -170,6 +198,11 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
                 "storage_mb": ent.storage_mb,
             },
         },
+        customers=customer_rows,
+        equipment=equipment_rows,
+        service_orders=order_rows,
+        inventory_items=item_rows,
+        inventory_movements=movement_rows,
     )
 
 
@@ -478,9 +511,19 @@ def pull_admin(
     snapshot.user_site_roles = [
         row for row in snapshot.user_site_roles if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()
     ]
+    snapshot.customers = [row for row in snapshot.customers if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
+    snapshot.equipment = [row for row in snapshot.equipment if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
+    snapshot.service_orders = [row for row in snapshot.service_orders if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
+    snapshot.inventory_items = [row for row in snapshot.inventory_items if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
+    snapshot.inventory_movements = [row for row in snapshot.inventory_movements if row.get("moved_at") and str(row["moved_at"]) > since.isoformat()]
     if snapshot.company.get("updated_at") and str(snapshot.company["updated_at"]) <= since.isoformat():
         snapshot.company = {}
-    snapshot.cursor = _max_cursor([snapshot.company] if snapshot.company else [], snapshot.sites, snapshot.users, snapshot.user_site_roles)
+    snapshot.cursor = _max_cursor(
+        [snapshot.company] if snapshot.company else [],
+        snapshot.sites, snapshot.users, snapshot.user_site_roles,
+        snapshot.customers, snapshot.equipment, snapshot.service_orders,
+        snapshot.inventory_items, snapshot.inventory_movements,
+    )
     return _attach_license(ctx, snapshot, installation_id=installation_id, hostname=hostname)
 
 
