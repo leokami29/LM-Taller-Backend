@@ -41,10 +41,10 @@ class CustomerCreate(_CustomerRutValidationMixin):
     last_name: str = Field(..., min_length=1, max_length=120)
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(None, max_length=40)
-    address: Optional[str] = None
+    address: Optional[str] = Field(None, max_length=500)
     city: Optional[str] = Field(None, max_length=120)
     country: Optional[str] = Field(None, max_length=80)
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(None, max_length=2000)
     metadata_json: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator(
@@ -71,10 +71,10 @@ class CustomerUpdate(_CustomerRutValidationMixin):
     last_name: Optional[str] = Field(None, min_length=1, max_length=120)
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(None, max_length=40)
-    address: Optional[str] = None
+    address: Optional[str] = Field(None, max_length=500)
     city: Optional[str] = Field(None, max_length=120)
     country: Optional[str] = Field(None, max_length=80)
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(None, max_length=2000)
     metadata_json: Optional[dict[str, Any]] = None
 
     @field_validator(

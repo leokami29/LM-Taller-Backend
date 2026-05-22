@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.core.dt import utc_now
 from app.core.enums import SubscriptionStatus, UserRole
 from app.core.permissions import ADMIN_USERS
 from app.core.security import TOKEN_USE_ACCESS, TYP_TENANT, SecurityUtils, oauth2_scheme
@@ -111,7 +112,7 @@ def _max_cursor(*groups: list[dict[str, Any]]) -> str:
         if item.get("updated_at") is not None
     ]
     if not values:
-        return datetime.utcnow().isoformat()
+        return utc_now().isoformat()
     return max(str(v) for v in values)
 
 
@@ -246,13 +247,21 @@ def _reject_if_stale(existing: Any, mutation: AdminMutation) -> AdminPushItemRes
     return None
 
 
-def _apply_company(ctx: SyncContext, mutation: AdminMutation) -> AdminPushItemResult:
+def _load_company_or_reject(ctx: SyncContext, mutation: AdminMutation) -> tuple[Company | None, AdminPushItemResult | None]:
+    """Fetch company + staleness check shared by _apply_company and _apply_session_policy."""
     company = ctx.db.query(Company).filter(Company.id == ctx.company_id).first()
     if not company:
-        return _rejected(mutation, "Empresa no encontrada")
+        return None, _rejected(mutation, "Empresa no encontrada")
     conflict = _reject_if_stale(company, mutation)
     if conflict:
-        return conflict
+        return None, conflict
+    return company, None
+
+
+def _apply_company(ctx: SyncContext, mutation: AdminMutation) -> AdminPushItemResult:
+    company, rejection = _load_company_or_reject(ctx, mutation)
+    if rejection:
+        return rejection
     if mutation.op not in ("update",):
         return _rejected(mutation, "Operacion no soportada para company")
     if "subscription_status" in mutation.payload or "current_period_end" in mutation.payload:
@@ -276,12 +285,9 @@ def _apply_company(ctx: SyncContext, mutation: AdminMutation) -> AdminPushItemRe
 
 
 def _apply_session_policy(ctx: SyncContext, mutation: AdminMutation) -> AdminPushItemResult:
-    company = ctx.db.query(Company).filter(Company.id == ctx.company_id).first()
-    if not company:
-        return _rejected(mutation, "Empresa no encontrada")
-    conflict = _reject_if_stale(company, mutation)
-    if conflict:
-        return conflict
+    company, rejection = _load_company_or_reject(ctx, mutation)
+    if rejection:
+        return rejection
     settings_json = dict(company.settings_json or {})
     settings_json["session_policies"] = mutation.payload.get("session_policies", {})
     company.settings_json = settings_json

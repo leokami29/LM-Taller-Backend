@@ -15,7 +15,7 @@ class CompanyCreate(BaseModel):
 
 class CompanyUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
-    address: Optional[str] = None
+    address: Optional[str] = Field(None, max_length=500)
     phone: Optional[str] = None
     email: Optional[EmailStr] = None
     country: Optional[str] = None
