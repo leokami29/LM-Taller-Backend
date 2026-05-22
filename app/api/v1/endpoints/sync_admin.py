@@ -29,6 +29,7 @@ from app.db.models.company import Company
 from app.db.models.customer import Customer
 from app.db.models.equipment import Equipment
 from app.db.models.inventory import InventoryItem, InventoryMovement
+from app.db.models.service_contract import ServiceContract
 from app.db.models.service_order import ServiceOrder
 from app.db.models.rbac import Site, UserSiteRole
 from app.db.models.user import User
@@ -91,6 +92,7 @@ class AdminSyncSnapshot(BaseModel):
     service_orders: list[dict[str, Any]] = Field(default_factory=list)
     inventory_items: list[dict[str, Any]] = Field(default_factory=list)
     inventory_movements: list[dict[str, Any]] = Field(default_factory=list)
+    service_contracts: list[dict[str, Any]] = Field(default_factory=list)
 
 
 @dataclass
@@ -164,6 +166,7 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
         .order_by(InventoryMovement.moved_at.desc())
         .all()
     ) if inv_item_ids else []
+    contracts = ctx.db.query(ServiceContract).filter(ServiceContract.company_id == ctx.company_id).order_by(ServiceContract.created_at.desc()).all()
     svc = PermissionService(ctx.db)
     ent = svc.get_entitlements(ctx.company_id)
     period_end = svc.get_subscription_period_end(ctx.company_id)
@@ -176,11 +179,12 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
     order_rows = [_row(o) for o in orders]
     item_rows = [_row(i) for i in inv_items]
     movement_rows = [_row(m) for m in inv_movements]
+    contract_rows = [_row(c) for c in contracts]
     return AdminSyncSnapshot(
         company_id=ctx.company_id,
         cursor=_max_cursor(
             [company_row], site_rows, user_rows, role_rows,
-            customer_rows, equipment_rows, order_rows, item_rows, movement_rows,
+            customer_rows, equipment_rows, order_rows, item_rows, movement_rows, contract_rows,
         ),
         company=company_row,
         sites=site_rows,
@@ -203,6 +207,7 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
         service_orders=order_rows,
         inventory_items=item_rows,
         inventory_movements=movement_rows,
+        service_contracts=contract_rows,
     )
 
 
@@ -516,13 +521,14 @@ def pull_admin(
     snapshot.service_orders = [row for row in snapshot.service_orders if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
     snapshot.inventory_items = [row for row in snapshot.inventory_items if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
     snapshot.inventory_movements = [row for row in snapshot.inventory_movements if row.get("moved_at") and str(row["moved_at"]) > since.isoformat()]
+    snapshot.service_contracts = [row for row in snapshot.service_contracts if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
     if snapshot.company.get("updated_at") and str(snapshot.company["updated_at"]) <= since.isoformat():
         snapshot.company = {}
     snapshot.cursor = _max_cursor(
         [snapshot.company] if snapshot.company else [],
         snapshot.sites, snapshot.users, snapshot.user_site_roles,
         snapshot.customers, snapshot.equipment, snapshot.service_orders,
-        snapshot.inventory_items, snapshot.inventory_movements,
+        snapshot.inventory_items, snapshot.inventory_movements, snapshot.service_contracts,
     )
     return _attach_license(ctx, snapshot, installation_id=installation_id, hostname=hostname)
 
