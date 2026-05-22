@@ -11,7 +11,9 @@ from app.db.models.rbac import RoleChangeRequest, Site, TemporaryPermission, Use
 from app.db.models.customer import Customer
 from app.db.models.equipment import Equipment
 from app.db.models.inventory import InventoryItem, InventoryMovement
+from app.db.models.order_number_sequence import OrderNumberSequence
 from app.db.models.pdf_document import PDFDocument
+from app.db.models.service_contract import ServiceContract
 from app.db.models.service_order import ServiceOrder, ServiceOrderCostLine, ServiceOrderTimeline
 from app.db.models.supplier import Supplier
 from app.db.models.user import User
@@ -21,30 +23,37 @@ def delete_company_cascade(session: Session, company_id) -> None:
     """Elimina empresa y filas dependientes (orden seguro para FK)."""
     session.execute(delete(TemporaryPermission).where(TemporaryPermission.company_id == company_id))
     session.execute(delete(RoleChangeRequest).where(RoleChangeRequest.company_id == company_id))
-    session.execute(delete(UserSiteRole).where(UserSiteRole.company_id == company_id))
-    session.execute(delete(Site).where(Site.company_id == company_id))
     session.execute(delete(AuditLog).where(AuditLog.company_id == company_id))
     session.execute(delete(PDFDocument).where(PDFDocument.company_id == company_id))
 
     item_ids = list(
         session.scalars(select(InventoryItem.id).where(InventoryItem.company_id == company_id)).all()
     )
-    if item_ids:
-        session.execute(delete(InventoryMovement).where(InventoryMovement.inventory_item_id.in_(item_ids)))
-
     order_ids = list(
         session.scalars(select(ServiceOrder.id).where(ServiceOrder.company_id == company_id)).all()
     )
+
+    if item_ids or order_ids:
+        session.execute(delete(InventoryMovement).where(
+            InventoryMovement.inventory_item_id.in_(item_ids) if item_ids else False
+        ))
+        if order_ids:
+            session.execute(delete(InventoryMovement).where(
+                InventoryMovement.service_order_id.in_(order_ids)
+            ))
     if order_ids:
         session.execute(delete(ServiceOrderCostLine).where(ServiceOrderCostLine.service_order_id.in_(order_ids)))
         session.execute(delete(ServiceOrderTimeline).where(ServiceOrderTimeline.service_order_id.in_(order_ids)))
-        session.execute(delete(InventoryMovement).where(InventoryMovement.service_order_id.in_(order_ids)))
         session.execute(delete(ServiceOrder).where(ServiceOrder.company_id == company_id))
 
     session.execute(delete(InventoryItem).where(InventoryItem.company_id == company_id))
     session.execute(delete(Equipment).where(Equipment.company_id == company_id))
     session.execute(delete(Customer).where(Customer.company_id == company_id))
     session.execute(delete(Supplier).where(Supplier.company_id == company_id))
+    session.execute(delete(ServiceContract).where(ServiceContract.company_id == company_id))
+    session.execute(delete(OrderNumberSequence).where(OrderNumberSequence.company_id == company_id))
+    session.execute(delete(UserSiteRole).where(UserSiteRole.company_id == company_id))
+    session.execute(delete(Site).where(Site.company_id == company_id))
     session.execute(delete(User).where(User.company_id == company_id))
     session.execute(delete(Company).where(Company.id == company_id))
     session.commit()

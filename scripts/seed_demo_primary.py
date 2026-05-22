@@ -623,17 +623,271 @@ def populate_primary_demo_company(
         ]
     )
 
-    # Movimiento de inventario ligado a orden (repuesto usado en reparación simulada)
+    # ---- TIMELINES COMPLETAS POR ORDEN (para probar /orders/{id}/timeline) ----
+
+    # ORD-000001 — RECEIVED (recién ingresado)
     session.add(
+        ServiceOrderTimeline(
+            service_order_id=orders[0].id,
+            old_status=None,
+            new_status=OrderStatus.RECEIVED.value,
+            changed_by_id=recep.id,
+            notes="Equipo ingresado por cliente con problema de carga post-actualización iOS",
+            time_spent_seconds=None,
+        ),
+    )
+
+    # ORD-000003 — WAITING_PARTS (recibido → diagnosticar → esperando repuesto)
+    session.add_all([
+        ServiceOrderTimeline(
+            service_order_id=orders[2].id,
+            old_status=None,
+            new_status=OrderStatus.RECEIVED.value,
+            changed_by_id=recep.id,
+            notes="Laptop HP ingresada sin encender, olor a quemado",
+        ),
+        ServiceOrderTimeline(
+            service_order_id=orders[2].id,
+            old_status=OrderStatus.RECEIVED.value,
+            new_status=OrderStatus.DIAGNOSING.value,
+            changed_by_id=tech2.id,
+            notes="Revisión VRM y placa madre — daño confirmado",
+            time_spent_seconds=2700,
+        ),
+        ServiceOrderTimeline(
+            service_order_id=orders[2].id,
+            old_status=OrderStatus.DIAGNOSING.value,
+            new_status=OrderStatus.WAITING_PARTS.value,
+            changed_by_id=tech2.id,
+            notes="Placa madre HP cotizada, esperando aprobación de proveedor",
+            time_spent_seconds=600,
+        ),
+    ])
+
+    # ORD-000004 — IN_REPAIR (recibido → diagnosticar → en reparación)
+    session.add_all([
+        ServiceOrderTimeline(
+            service_order_id=orders[3].id,
+            old_status=None,
+            new_status=OrderStatus.RECEIVED.value,
+            changed_by_id=recep.id,
+            notes="MacBook Air M2 — teclas intermitentes",
+        ),
+        ServiceOrderTimeline(
+            service_order_id=orders[3].id,
+            old_status=OrderStatus.RECEIVED.value,
+            new_status=OrderStatus.DIAGNOSING.value,
+            changed_by_id=tech1.id,
+            notes="Diagnóstico: flex dañado, requiere reball parcial",
+            time_spent_seconds=3600,
+        ),
+        ServiceOrderTimeline(
+            service_order_id=orders[3].id,
+            old_status=OrderStatus.DIAGNOSING.value,
+            new_status=OrderStatus.IN_REPAIR.value,
+            changed_by_id=tech1.id,
+            notes="Iniciando limpieza de flex y reball — en banco",
+            time_spent_seconds=900,
+        ),
+    ])
+
+    # ORD-000005 — COMPLETED (recibido → diagnosticar → en reparación → completado)
+    session.add_all([
+        ServiceOrderTimeline(
+            service_order_id=orders[4].id,
+            old_status=None,
+            new_status=OrderStatus.RECEIVED.value,
+            changed_by_id=recep.id,
+            notes="Tablet Samsung S9 con pantalla fantasma",
+        ),
+        ServiceOrderTimeline(
+            service_order_id=orders[4].id,
+            old_status=OrderStatus.RECEIVED.value,
+            new_status=OrderStatus.DIAGNOSING.value,
+            changed_by_id=tech2.id,
+            notes="Diagnóstico: digitalizador defectuoso, requiere reemplazo",
+            time_spent_seconds=2400,
+        ),
+        ServiceOrderTimeline(
+            service_order_id=orders[4].id,
+            old_status=OrderStatus.DIAGNOSING.value,
+            new_status=OrderStatus.IN_REPAIR.value,
+            changed_by_id=tech2.id,
+            notes="Iniciando desmontaje y reemplazo de digitalizador",
+            time_spent_seconds=4500,
+        ),
+        ServiceOrderTimeline(
+            service_order_id=orders[4].id,
+            old_status=OrderStatus.IN_REPAIR.value,
+            new_status=OrderStatus.COMPLETED.value,
+            changed_by_id=tech2.id,
+            notes="Reparación finalizada — pruebas de calibración táctil superadas",
+            time_spent_seconds=1800,
+        ),
+    ])
+
+    # ORD-000006 — DELIVERED (recibido → diagnosticar → en reparación → completado → entregado)
+    session.add_all([
+        ServiceOrderTimeline(
+            service_order_id=orders[5].id,
+            old_status=None,
+            new_status=OrderStatus.RECEIVED.value,
+            changed_by_id=recep.id,
+            notes="Xiaomi 13T con micrófono ruidoso — recepción",
+        ),
+        ServiceOrderTimeline(
+            service_order_id=orders[5].id,
+            old_status=OrderStatus.RECEIVED.value,
+            new_status=OrderStatus.DIAGNOSING.value,
+            changed_by_id=tech1.id,
+            notes="Confirmado flex de micrófono dañado",
+            time_spent_seconds=1200,
+        ),
+        ServiceOrderTimeline(
+            service_order_id=orders[5].id,
+            old_status=OrderStatus.DIAGNOSING.value,
+            new_status=OrderStatus.IN_REPAIR.value,
+            changed_by_id=tech1.id,
+            notes="Reemplazo de flex de micrófono en curso",
+            time_spent_seconds=3600,
+        ),
+        ServiceOrderTimeline(
+            service_order_id=orders[5].id,
+            old_status=OrderStatus.IN_REPAIR.value,
+            new_status=OrderStatus.COMPLETED.value,
+            changed_by_id=tech1.id,
+            notes="Pruebas de audio OK — listo para entrega",
+            time_spent_seconds=900,
+        ),
+        ServiceOrderTimeline(
+            service_order_id=orders[5].id,
+            old_status=OrderStatus.COMPLETED.value,
+            new_status=OrderStatus.DELIVERED.value,
+            changed_by_id=recep.id,
+            notes="Entregado a cliente — conforme con reparación",
+            time_spent_seconds=None,
+        ),
+    ])
+
+    # ORD-000007 — CANCELLED (recibido → cancelado por cliente)
+    session.add_all([
+        ServiceOrderTimeline(
+            service_order_id=orders[6].id,
+            old_status=None,
+            new_status=OrderStatus.RECEIVED.value,
+            changed_by_id=recep.id,
+            notes="Lenovo Legion — ventiladores ruidosos, cliente solicita cotización",
+        ),
+        ServiceOrderTimeline(
+            service_order_id=orders[6].id,
+            old_status=OrderStatus.RECEIVED.value,
+            new_status=OrderStatus.CANCELLED.value,
+            changed_by_id=admin.id,
+            notes="Cliente desistió — costo de reparación excede presupuesto",
+            time_spent_seconds=None,
+        ),
+    ])
+
+    # ORD-000008 — IN_REPAIR (recibido → diagnosticar → en reparación, con dueño original diferente)
+    session.add_all([
+        ServiceOrderTimeline(
+            service_order_id=orders[7].id,
+            old_status=None,
+            new_status=OrderStatus.RECEIVED.value,
+            changed_by_id=recep.id,
+            notes="PS5 con lector atascado — entregado por familiar del dueño original",
+        ),
+        ServiceOrderTimeline(
+            service_order_id=orders[7].id,
+            old_status=OrderStatus.RECEIVED.value,
+            new_status=OrderStatus.DIAGNOSING.value,
+            changed_by_id=tech1.id,
+            notes="Diagnóstico: mecanismo lector requiere desmontaje completo",
+            time_spent_seconds=5400,
+        ),
+        ServiceOrderTimeline(
+            service_order_id=orders[7].id,
+            old_status=OrderStatus.DIAGNOSING.value,
+            new_status=OrderStatus.IN_REPAIR.value,
+            changed_by_id=tech1.id,
+            notes="Desmontaje de lector en curso — posible reemplazo de engranaje",
+            time_spent_seconds=3600,
+        ),
+    ])
+
+    # Movimiento de inventario ligado a orden (repuesto usado en reparación simulada)
+    session.add_all([
         InventoryMovement(
             inventory_item_id=inv_tool.id,
             movement_type=InventoryMovementType.USED_IN_REPAIR,
             quantity_change=Decimal("-1"),
             service_order_id=orders[4].id,
-            notes="Uso de kit Torx en reparación Tab S9",
+            notes="Kit Torx usado en reparación Tab S9",
             moved_by_id=tech2.id,
-        )
-    )
+        ),
+        # Pantalla usada en reparación de Tab S9 (ORD-000005)
+        InventoryMovement(
+            inventory_item_id=inv_screen.id,
+            movement_type=InventoryMovementType.USED_IN_REPAIR,
+            quantity_change=Decimal("-1"),
+            service_order_id=orders[4].id,
+            notes="Pantalla OLED reemplazada — reparación final Tab S9",
+            moved_by_id=tech2.id,
+        ),
+        # SSD usado en diagnóstico HP (ORD-000003)
+        InventoryMovement(
+            inventory_item_id=inv_ssd.id,
+            movement_type=InventoryMovementType.USED_IN_REPAIR,
+            quantity_change=Decimal("-1"),
+            service_order_id=orders[2].id,
+            notes="SSD de prueba para diagnóstico placa HP",
+            moved_by_id=tech2.id,
+        ),
+        # Alcohol usado en limpieza MacBook (ORD-000004)
+        InventoryMovement(
+            inventory_item_id=inv_low.id,
+            movement_type=InventoryMovementType.USED_IN_REPAIR,
+            quantity_change=Decimal("-1"),
+            service_order_id=orders[3].id,
+            notes="Alcohol isopropílico para limpieza de contactos flex MacBook",
+            moved_by_id=tech1.id,
+        ),
+        # Funda usada como accesorio en entrega Xiaomi (ORD-000006)
+        InventoryMovement(
+            inventory_item_id=inv_case.id,
+            movement_type=InventoryMovementType.USED_IN_REPAIR,
+            quantity_change=Decimal("-1"),
+            service_order_id=orders[5].id,
+            notes="Funda de cortesía entregada con equipo reparado",
+            moved_by_id=recep.id,
+        ),
+        # Compra reciente de pantallas
+        InventoryMovement(
+            inventory_item_id=inv_screen.id,
+            movement_type=InventoryMovementType.PURCHASE,
+            quantity_change=Decimal("5"),
+            service_order_id=None,
+            notes="Compra proveedor — reposición trimestral pantallas iPhone",
+            moved_by_id=admin.id,
+        ),
+        # Ajuste cíclico de inventario baterías
+        InventoryMovement(
+            inventory_item_id=inv_battery.id,
+            movement_type=InventoryMovementType.ADJUSTMENT,
+            quantity_change=Decimal("3"),
+            service_order_id=None,
+            notes="Ajuste por conteo físico — unidades encontradas en bodega secundaria",
+            moved_by_id=recep.id,
+        ),
+    ])
+
+    # Ajustar stocks para reflejar los nuevos movimientos
+    inv_screen.quantity_stock = Decimal(str(inv_screen.quantity_stock)) + Decimal("4")   # -1 +5 = +4 neto
+    inv_battery.quantity_stock = Decimal(str(inv_battery.quantity_stock)) + Decimal("3")  # +3 ajuste
+    inv_ssd.quantity_stock = Decimal(str(inv_ssd.quantity_stock)) + Decimal("-1")        # consumido en diag
+    inv_low.quantity_stock = Decimal(str(inv_low.quantity_stock)) + Decimal("-1")        # consumido limpieza
+    inv_tool.quantity_stock = Decimal(str(inv_tool.quantity_stock)) + Decimal("-1")      # consumido
+    inv_case.quantity_stock = Decimal(str(inv_case.quantity_stock)) + Decimal("-1")      # funda cortesía
 
     session.add(
         PDFDocument(
