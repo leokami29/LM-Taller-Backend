@@ -83,3 +83,29 @@ class InventoryMovementResponse(BaseModel):
     notes: Optional[str]
     moved_by_id: Optional[UUID]
     moved_at: datetime
+
+
+# ─── Inventory Category schemas ───
+
+class InventoryCategoryCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    color: Optional[str] = Field(None, max_length=7)
+    description: Optional[str] = Field(None, max_length=255)
+
+
+class InventoryCategoryUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=120)
+    color: Optional[str] = Field(None, max_length=7)
+    description: Optional[str] = Field(None, max_length=255)
+
+
+class InventoryCategoryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    company_id: UUID
+    name: str
+    color: Optional[str]
+    description: Optional[str]
+    created_at: datetime
+    updated_at: datetime

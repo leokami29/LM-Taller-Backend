@@ -5,6 +5,7 @@ from app.db.models.customer import Customer
 from app.db.models.customer_portal_user import CustomerPortalUser
 from app.db.models.equipment import Equipment
 from app.db.models.inventory import InventoryItem, InventoryMovement
+from app.db.models.inventory_category import InventoryCategory
 from app.db.models.pdf_document import PDFDocument
 from app.db.models.platform_user import PlatformUser
 from app.db.models.order_number_sequence import OrderNumberSequence
@@ -34,6 +35,7 @@ __all__ = [
     "ServiceOrderTimeline",
     "InventoryItem",
     "InventoryMovement",
+    "InventoryCategory",
     "Supplier",
     "PDFDocument",
     "PlatformSetting",

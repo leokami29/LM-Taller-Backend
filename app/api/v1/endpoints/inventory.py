@@ -1,7 +1,10 @@
+import csv
+from datetime import datetime, timedelta
+from io import StringIO
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -31,6 +34,8 @@ from app.services.inventory_service import apply_stock_change
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 
+# ─── Static routes MUST come before dynamic /{item_id} routes ───
+
 @router.get("/", response_model=PaginatedResponse[InventoryItemResponse])
 def list_inventory(
     skip: int = Query(0, ge=0),
@@ -43,7 +48,7 @@ def list_inventory(
     q = db.query(InventoryItem).filter(InventoryItem.company_id == current_user.company_id)
     if search:
         term = f"%{search.lower()}%"
-        q = q.filter(or_(InventoryItem.sku.ilike(term), InventoryItem.name.ilike(term)))
+        q = q.filter(or_(InventoryItem.sku.ilike(term), InventoryItem.name.ilike(term), InventoryItem.barcode.ilike(term)))
     if category:
         q = q.filter(InventoryItem.category.ilike(f"%{category}%"))
     total = q.count()
@@ -105,6 +110,149 @@ def get_all_inventory_movements(
     )
     return movements
 
+
+@router.get("/low-stock", response_model=PaginatedResponse[InventoryItemResponse])
+def list_low_stock(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    current_user: User = Depends(RequirePermission(INVENTORY_READ)),
+    db: Session = Depends(get_db),
+) -> dict:
+    q = db.query(InventoryItem).filter(
+        InventoryItem.company_id == current_user.company_id,
+        InventoryItem.quantity_stock <= InventoryItem.quantity_minimum,
+    )
+    total = q.count()
+    items = q.order_by(InventoryItem.name).offset(skip).limit(limit).all()
+    return {"items": items, "total": total, "skip": skip, "limit": limit}
+
+
+@router.get("/categories")
+def list_categories(
+    current_user: User = Depends(RequirePermission(INVENTORY_READ)),
+    db: Session = Depends(get_db),
+) -> list[str]:
+    rows = (
+        db.query(InventoryItem.category)
+        .filter(
+            InventoryItem.company_id == current_user.company_id,
+            InventoryItem.category.isnot(None),
+        )
+        .distinct()
+        .order_by(InventoryItem.category)
+        .all()
+    )
+    return [r[0] for r in rows if r[0]]
+
+
+@router.get("/export")
+def export_inventory(
+    search: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
+    current_user: User = Depends(RequirePermission(INVENTORY_READ)),
+    db: Session = Depends(get_db),
+) -> Response:
+    q = db.query(InventoryItem).filter(InventoryItem.company_id == current_user.company_id)
+    if search:
+        term = f"%{search.lower()}%"
+        q = q.filter(or_(InventoryItem.sku.ilike(term), InventoryItem.name.ilike(term)))
+    if category:
+        q = q.filter(InventoryItem.category.ilike(f"%{category}%"))
+    items = q.order_by(InventoryItem.name).all()
+
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "sku", "name", "category", "quantity_stock", "quantity_minimum",
+        "unit_cost", "unit_price", "barcode", "supplier_id",
+        "last_restocked_at", "created_at",
+    ])
+    for item in items:
+        writer.writerow([
+            item.sku,
+            item.name,
+            item.category or "",
+            float(item.quantity_stock or 0),
+            float(item.quantity_minimum or 0),
+            float(item.unit_cost or 0),
+            float(item.unit_price or 0),
+            item.barcode or "",
+            str(item.supplier_id) if item.supplier_id else "",
+            item.last_restocked_at.isoformat() if item.last_restocked_at else "",
+            item.created_at.isoformat() if item.created_at else "",
+        ])
+
+    csv_bytes = output.getvalue().encode("utf-8-sig")
+    output.close()
+    return Response(
+        content=csv_bytes,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="inventario.csv"'},
+    )
+
+
+@router.get("/analytics")
+def inventory_analytics(
+    current_user: User = Depends(RequirePermission(INVENTORY_READ)),
+    db: Session = Depends(get_db),
+) -> dict:
+    month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    total_items = (
+        db.query(InventoryItem)
+        .filter(InventoryItem.company_id == current_user.company_id)
+        .count()
+    )
+    low_stock_count = (
+        db.query(InventoryItem)
+        .filter(
+            InventoryItem.company_id == current_user.company_id,
+            InventoryItem.quantity_stock <= InventoryItem.quantity_minimum,
+        )
+        .count()
+    )
+
+    from sqlalchemy import func
+    total_value = (
+        db.query(func.sum(InventoryItem.quantity_stock * InventoryItem.unit_cost))
+        .filter(InventoryItem.company_id == current_user.company_id)
+        .scalar()
+    ) or 0
+
+    movements_month = (
+        db.query(InventoryMovement)
+        .join(InventoryItem, InventoryItem.id == InventoryMovement.inventory_item_id)
+        .filter(
+            InventoryItem.company_id == current_user.company_id,
+            InventoryMovement.moved_at >= month_start,
+        )
+        .count()
+    )
+
+    movement_breakdown = {}
+    for mtype in ["purchase", "used_in_repair", "sale", "adjustment", "damage"]:
+        count = (
+            db.query(InventoryMovement)
+            .join(InventoryItem, InventoryItem.id == InventoryMovement.inventory_item_id)
+            .filter(
+                InventoryItem.company_id == current_user.company_id,
+                InventoryMovement.movement_type == mtype,
+                InventoryMovement.moved_at >= month_start,
+            )
+            .count()
+        )
+        movement_breakdown[mtype] = count
+
+    return {
+        "total_items": total_items,
+        "low_stock_count": low_stock_count,
+        "total_value": float(total_value),
+        "movements_this_month": movements_month,
+        "movement_breakdown": movement_breakdown,
+    }
+
+
+# ─── Dynamic /{item_id} routes ───
 
 @router.get("/{item_id}", response_model=InventoryItemResponse)
 def get_inventory_item(
@@ -238,9 +386,11 @@ def adjust_stock(
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e)) from e
 
+
 @router.get("/{item_id}/movements", response_model=list[InventoryMovementResponse])
 def get_inventory_movements(
     item_id: UUID,
+    movement_type: Optional[str] = Query(None),
     current_user: User = Depends(RequirePermission(INVENTORY_READ)),
     db: Session = Depends(get_db),
 ) -> list[InventoryMovement]:
@@ -252,11 +402,8 @@ def get_inventory_movements(
     if not item:
         raise HTTPException(status_code=404, detail="Ítem no encontrado")
 
-    movements = (
-        db.query(InventoryMovement)
-        .filter(InventoryMovement.inventory_item_id == item_id)
-        .order_by(InventoryMovement.moved_at.desc())
-        .all()
-    )
+    q = db.query(InventoryMovement).filter(InventoryMovement.inventory_item_id == item_id)
+    if movement_type:
+        q = q.filter(InventoryMovement.movement_type == movement_type)
+    movements = q.order_by(InventoryMovement.moved_at.desc()).all()
     return movements
-

@@ -9,6 +9,7 @@ from app.api.v1.endpoints import (
     customers,
     equipment,
     inventory,
+    inventory_categories,
     me,
     orders,
     service_contracts,
@@ -34,6 +35,7 @@ router.include_router(service_contracts.router)
 router.include_router(portal_users.router)
 router.include_router(portal.router)
 router.include_router(inventory.router)
+router.include_router(inventory_categories.router)
 router.include_router(analytics.router)
 router.include_router(license.router)
 router.include_router(sync_admin.router)

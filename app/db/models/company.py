@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from app.db.models.customer import Customer
     from app.db.models.equipment import Equipment
     from app.db.models.inventory import InventoryItem
+    from app.db.models.inventory_category import InventoryCategory
     from app.db.models.pdf_document import PDFDocument
     from app.db.models.rbac import Site, UserSiteRole
     from app.db.models.service_order import ServiceOrder
@@ -58,6 +59,7 @@ class Company(Base):
     equipment_list: Mapped[list["Equipment"]] = relationship("Equipment", back_populates="company")
     service_orders: Mapped[list["ServiceOrder"]] = relationship("ServiceOrder", back_populates="company")
     inventory_items: Mapped[list["InventoryItem"]] = relationship("InventoryItem", back_populates="company")
+    inventory_categories: Mapped[list["InventoryCategory"]] = relationship("InventoryCategory", back_populates="company")
     suppliers: Mapped[list["Supplier"]] = relationship("Supplier", back_populates="company")
     pdf_documents: Mapped[list["PDFDocument"]] = relationship("PDFDocument", back_populates="company")
     sites: Mapped[list["Site"]] = relationship("Site", back_populates="company")
