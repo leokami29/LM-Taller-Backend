@@ -28,7 +28,7 @@ from app.core.subscription_lifecycle import subscription_is_usable, validate_sub
 from app.db.catalog.models import TenantRouting
 from app.db.models.company import Company
 from app.db.models.customer import Customer
-from app.db.models.equipment import Equipment
+from app.db.models.equipment import Equipment, EquipmentAttribute
 from app.db.models.inventory import InventoryItem, InventoryMovement
 from app.db.models.service_contract import ServiceContract
 from app.db.models.service_order import ServiceOrder
@@ -90,6 +90,7 @@ class AdminSyncSnapshot(BaseModel):
     license_manifest: SignedLicenseManifest | None = None
     customers: list[dict[str, Any]] = Field(default_factory=list)
     equipment: list[dict[str, Any]] = Field(default_factory=list)
+    equipment_attributes: list[dict[str, Any]] = Field(default_factory=list)
     service_orders: list[dict[str, Any]] = Field(default_factory=list)
     inventory_items: list[dict[str, Any]] = Field(default_factory=list)
     inventory_movements: list[dict[str, Any]] = Field(default_factory=list)
@@ -168,6 +169,13 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
         .all()
     ) if inv_item_ids else []
     contracts = ctx.db.query(ServiceContract).filter(ServiceContract.company_id == ctx.company_id).order_by(ServiceContract.created_at.desc()).all()
+    equipment_ids = [e.id for e in equipment]
+    eq_attrs = (
+        ctx.db.query(EquipmentAttribute)
+        .filter(EquipmentAttribute.equipment_id.in_(equipment_ids))
+        .order_by(EquipmentAttribute.key)
+        .all()
+    ) if equipment_ids else []
     svc = PermissionService(ctx.db)
     ent = svc.get_entitlements(ctx.company_id)
     period_end = svc.get_subscription_period_end(ctx.company_id)
@@ -181,6 +189,7 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
     item_rows = [_row(i) for i in inv_items]
     movement_rows = [_row(m) for m in inv_movements]
     contract_rows = [_row(c) for c in contracts]
+    eq_attr_rows = [_row(a) for a in eq_attrs]
     return AdminSyncSnapshot(
         company_id=ctx.company_id,
         cursor=_max_cursor(
@@ -205,6 +214,7 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
         },
         customers=customer_rows,
         equipment=equipment_rows,
+        equipment_attributes=eq_attr_rows,
         service_orders=order_rows,
         inventory_items=item_rows,
         inventory_movements=movement_rows,
@@ -528,6 +538,12 @@ def pull_admin(
     snapshot.inventory_items = [row for row in snapshot.inventory_items if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
     snapshot.inventory_movements = [row for row in snapshot.inventory_movements if row.get("moved_at") and str(row["moved_at"]) > since.isoformat()]
     snapshot.service_contracts = [row for row in snapshot.service_contracts if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
+
+    eq_ids_in_snapshot = {str(eq.get("id")) for eq in snapshot.equipment}
+    snapshot.equipment_attributes = [
+        attr for attr in snapshot.equipment_attributes
+        if str(attr.get("equipment_id")) in eq_ids_in_snapshot
+    ]
     if snapshot.company.get("updated_at") and str(snapshot.company["updated_at"]) <= since.isoformat():
         snapshot.company = {}
     snapshot.cursor = _max_cursor(
