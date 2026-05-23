@@ -123,10 +123,10 @@ class EquipmentResponse(BaseModel):
     warranty_start: Optional[date] = None
     warranty_end: Optional[date] = None
     warranty_provider: Optional[str] = None
-    photos_urls: Optional[list[Any]] = None
-    image_urls: Optional[list[Any]] = None
-    tags: Optional[list[str]] = None
-    custom_fields: Optional[dict[str, Any]] = None
+    photos_urls: list[Any] = Field(default_factory=list)
+    image_urls: list[Any] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    custom_fields: dict[str, Any] = Field(default_factory=dict)
     additional_notes: Optional[str] = None
     first_received_date: Optional[date] = None
     created_at: datetime

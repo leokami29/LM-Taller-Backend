@@ -30,6 +30,7 @@ from app.db.models.company import Company
 from app.db.models.customer import Customer
 from app.db.models.equipment import Equipment, EquipmentAttribute
 from app.db.models.inventory import InventoryItem, InventoryMovement
+from app.db.models.inventory_category import InventoryCategory
 from app.db.models.service_contract import ServiceContract
 from app.db.models.service_order import ServiceOrder
 from app.db.models.service_order_image import ServiceOrderImage
@@ -94,6 +95,7 @@ class AdminSyncSnapshot(BaseModel):
     equipment_attributes: list[dict[str, Any]] = Field(default_factory=list)
     service_orders: list[dict[str, Any]] = Field(default_factory=list)
     service_order_images: list[dict[str, Any]] = Field(default_factory=list)
+    inventory_categories: list[dict[str, Any]] = Field(default_factory=list)
     inventory_items: list[dict[str, Any]] = Field(default_factory=list)
     inventory_movements: list[dict[str, Any]] = Field(default_factory=list)
     service_contracts: list[dict[str, Any]] = Field(default_factory=list)
@@ -169,6 +171,7 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
         .order_by(ServiceOrderImage.sort_order, ServiceOrderImage.created_at)
         .all()
     ) if order_ids else []
+    inv_categories = ctx.db.query(InventoryCategory).filter(InventoryCategory.company_id == ctx.company_id).order_by(InventoryCategory.name).all()
     inv_items = ctx.db.query(InventoryItem).filter(InventoryItem.company_id == ctx.company_id).order_by(InventoryItem.created_at.desc()).all()
     inv_item_ids = [i.id for i in inv_items]
     inv_movements = (
@@ -196,6 +199,7 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
     equipment_rows = [_row(e) for e in equipment]
     order_rows = [_row(o) for o in orders]
     order_image_rows = [_row(i) for i in order_images]
+    category_rows = [_row(c) for c in inv_categories]
     item_rows = [_row(i) for i in inv_items]
     movement_rows = [_row(m) for m in inv_movements]
     contract_rows = [_row(c) for c in contracts]
@@ -204,7 +208,7 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
         company_id=ctx.company_id,
         cursor=_max_cursor(
             [company_row], site_rows, user_rows, role_rows,
-            customer_rows, equipment_rows, order_rows, item_rows, movement_rows, contract_rows,
+            customer_rows, equipment_rows, order_rows, category_rows, item_rows, movement_rows, contract_rows,
             order_image_rows,
         ),
         company=company_row,
@@ -228,6 +232,7 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
         equipment_attributes=eq_attr_rows,
         service_orders=order_rows,
         service_order_images=order_image_rows,
+        inventory_categories=category_rows,
         inventory_items=item_rows,
         inventory_movements=movement_rows,
         service_contracts=contract_rows,
@@ -548,6 +553,7 @@ def pull_admin(
     snapshot.equipment = [row for row in snapshot.equipment if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
     snapshot.service_orders = [row for row in snapshot.service_orders if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
     snapshot.service_order_images = [row for row in snapshot.service_order_images if row.get("created_at") and str(row["created_at"]) > since.isoformat()]
+    snapshot.inventory_categories = [row for row in snapshot.inventory_categories if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
     snapshot.inventory_items = [row for row in snapshot.inventory_items if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
     snapshot.inventory_movements = [row for row in snapshot.inventory_movements if row.get("moved_at") and str(row["moved_at"]) > since.isoformat()]
     snapshot.service_contracts = [row for row in snapshot.service_contracts if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
@@ -568,7 +574,7 @@ def pull_admin(
         [snapshot.company] if snapshot.company else [],
         snapshot.sites, snapshot.users, snapshot.user_site_roles,
         snapshot.customers, snapshot.equipment, snapshot.service_orders,
-        snapshot.inventory_items, snapshot.inventory_movements, snapshot.service_contracts,
+        snapshot.inventory_categories, snapshot.inventory_items, snapshot.inventory_movements, snapshot.service_contracts,
         snapshot.service_order_images,
     )
     return _attach_license(ctx, snapshot, installation_id=installation_id, hostname=hostname)
