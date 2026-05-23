@@ -143,6 +143,7 @@ class AuditLogResponse(BaseModel):
     action: str
     resource_type: Optional[str]
     resource_id: Optional[str]
+    detail: Optional[str]
     metadata_json: dict[str, Any]
     ip_address: Optional[str]
     user_agent: Optional[str]

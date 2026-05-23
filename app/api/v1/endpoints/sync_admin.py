@@ -34,7 +34,8 @@ from app.db.models.inventory_category import InventoryCategory
 from app.db.models.service_contract import ServiceContract
 from app.db.models.service_order import ServiceOrder
 from app.db.models.service_order_image import ServiceOrderImage
-from app.db.models.rbac import Site, UserSiteRole
+from app.db.models.audit_log import AuditLog
+from app.db.models.rbac import RoleChangeRequest, Site, TemporaryPermission, UserSiteRole
 from app.db.models.user import User
 from app.db.session import catalog_session_scope, tenant_session_for_company
 from app.schemas.license import SignedLicenseManifest
@@ -49,7 +50,7 @@ from app.services.tenant_config_events import (
 
 router = APIRouter(prefix="/sync/admin", tags=["sync-admin"])
 
-SyncEntity = Literal["company", "site", "user", "user_site_role", "session_policy"]
+SyncEntity = Literal["company", "site", "user", "user_site_role", "session_policy", "role_change_request", "temporary_permission", "audit_log"]
 SyncOp = Literal["create", "update", "delete", "deactivate", "reset_password"]
 
 
@@ -99,6 +100,9 @@ class AdminSyncSnapshot(BaseModel):
     inventory_items: list[dict[str, Any]] = Field(default_factory=list)
     inventory_movements: list[dict[str, Any]] = Field(default_factory=list)
     service_contracts: list[dict[str, Any]] = Field(default_factory=list)
+    role_change_requests: list[dict[str, Any]] = Field(default_factory=list)
+    temporary_permissions: list[dict[str, Any]] = Field(default_factory=list)
+    audit_logs: list[dict[str, Any]] = Field(default_factory=list)
 
 
 @dataclass
@@ -181,6 +185,24 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
         .all()
     ) if inv_item_ids else []
     contracts = ctx.db.query(ServiceContract).filter(ServiceContract.company_id == ctx.company_id).order_by(ServiceContract.created_at.desc()).all()
+    role_change_reqs = (
+        ctx.db.query(RoleChangeRequest)
+        .filter(RoleChangeRequest.company_id == ctx.company_id)
+        .order_by(RoleChangeRequest.created_at.desc())
+        .all()
+    )
+    temp_perms = (
+        ctx.db.query(TemporaryPermission)
+        .filter(TemporaryPermission.company_id == ctx.company_id)
+        .order_by(TemporaryPermission.created_at.desc())
+        .all()
+    )
+    audit_logs = (
+        ctx.db.query(AuditLog)
+        .filter(AuditLog.company_id == ctx.company_id)
+        .order_by(AuditLog.created_at.desc())
+        .all()
+    )
     equipment_ids = [e.id for e in equipment]
     eq_attrs = (
         ctx.db.query(EquipmentAttribute)
@@ -203,13 +225,16 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
     item_rows = [_row(i) for i in inv_items]
     movement_rows = [_row(m) for m in inv_movements]
     contract_rows = [_row(c) for c in contracts]
+    role_change_req_rows = [_row(r) for r in role_change_reqs]
+    temp_perm_rows = [_row(t) for t in temp_perms]
+    audit_log_rows = [_row(a) for a in audit_logs]
     eq_attr_rows = [_row(a) for a in eq_attrs]
     return AdminSyncSnapshot(
         company_id=ctx.company_id,
         cursor=_max_cursor(
             [company_row], site_rows, user_rows, role_rows,
             customer_rows, equipment_rows, order_rows, category_rows, item_rows, movement_rows, contract_rows,
-            order_image_rows,
+            order_image_rows, role_change_req_rows, temp_perm_rows,
         ),
         company=company_row,
         sites=site_rows,
@@ -236,6 +261,9 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
         inventory_items=item_rows,
         inventory_movements=movement_rows,
         service_contracts=contract_rows,
+        role_change_requests=role_change_req_rows,
+        temporary_permissions=temp_perm_rows,
+        audit_logs=audit_log_rows,
     )
 
 
@@ -557,6 +585,9 @@ def pull_admin(
     snapshot.inventory_items = [row for row in snapshot.inventory_items if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
     snapshot.inventory_movements = [row for row in snapshot.inventory_movements if row.get("moved_at") and str(row["moved_at"]) > since.isoformat()]
     snapshot.service_contracts = [row for row in snapshot.service_contracts if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
+    snapshot.role_change_requests = [row for row in snapshot.role_change_requests if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
+    snapshot.temporary_permissions = [row for row in snapshot.temporary_permissions if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
+    snapshot.audit_logs = [row for row in snapshot.audit_logs if row.get("created_at") and str(row["created_at"]) > since.isoformat()]
 
     eq_ids_in_snapshot = {str(eq.get("id")) for eq in snapshot.equipment}
     snapshot.equipment_attributes = [
@@ -575,7 +606,7 @@ def pull_admin(
         snapshot.sites, snapshot.users, snapshot.user_site_roles,
         snapshot.customers, snapshot.equipment, snapshot.service_orders,
         snapshot.inventory_categories, snapshot.inventory_items, snapshot.inventory_movements, snapshot.service_contracts,
-        snapshot.service_order_images,
+        snapshot.service_order_images, snapshot.role_change_requests, snapshot.temporary_permissions,
     )
     return _attach_license(ctx, snapshot, installation_id=installation_id, hostname=hostname)
 
@@ -600,6 +631,12 @@ def push_admin(
             result = _apply_user(ctx, mutation)
         elif mutation.entity == "user_site_role":
             result = _apply_user_site_role(ctx, mutation)
+        elif mutation.entity == "role_change_request":
+            result = _rejected(mutation, "Use la API REST para gestionar solicitudes de cambio de rol")
+        elif mutation.entity == "temporary_permission":
+            result = _rejected(mutation, "Use la API REST para gestionar permisos temporales")
+        elif mutation.entity == "audit_log":
+            result = _rejected(mutation, "Los registros de auditoria son solo lectura")
         else:
             result = _rejected(mutation, "Entidad no soportada")
         results.append(result)
