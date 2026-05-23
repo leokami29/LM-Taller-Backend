@@ -126,6 +126,7 @@ def list_orders(
     search: Optional[str] = Query(None, description="Número de orden o descripción"),
     customer_id: Optional[UUID] = Query(None, description="Filtrar por cliente"),
     equipment_id: Optional[UUID] = Query(None, description="Filtrar por equipo"),
+    service_contract_id: Optional[UUID] = Query(None, description="Filtrar por contrato"),
     current_user: User = Depends(RequirePermission(ORDERS_READ)),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -142,6 +143,8 @@ def list_orders(
         )
     if equipment_id:
         q = q.filter(ServiceOrder.equipment_id == equipment_id)
+    if service_contract_id:
+        q = q.filter(ServiceOrder.service_contract_id == service_contract_id)
     if search:
         term = f"%{search.lower()}%"
         q = q.filter(

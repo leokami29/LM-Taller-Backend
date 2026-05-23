@@ -8,7 +8,12 @@ from app.core.permissions import ANALYTICS_READ
 from app.db.models.user import User
 from app.db.session import get_db
 from app.dependencies import RequirePermission
-from app.services.analytics_service import orders_metrics, technicians_performance
+from app.services.analytics_service import (
+    customer_analytics,
+    orders_metrics,
+    revenue_analytics,
+    technicians_performance,
+)
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -40,4 +45,30 @@ def get_technicians_performance(
         company_id=current_user.company_id,
         date_from=date_from,
         date_to=date_to,
+    )
+
+
+@router.get("/revenue")
+def get_revenue_analytics(
+    months: int = Query(12, ge=1, le=60),
+    current_user: User = Depends(RequirePermission(ANALYTICS_READ)),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return revenue_analytics(
+        db,
+        company_id=current_user.company_id,
+        months=months,
+    )
+
+
+@router.get("/customers")
+def get_customer_analytics(
+    top_n: int = Query(10, ge=1, le=50),
+    current_user: User = Depends(RequirePermission(ANALYTICS_READ)),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return customer_analytics(
+        db,
+        company_id=current_user.company_id,
+        top_n=top_n,
     )
