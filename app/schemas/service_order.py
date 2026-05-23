@@ -89,6 +89,23 @@ class ServiceOrderCostLineResponse(BaseModel):
     created_at: datetime
 
 
+class ServiceOrderImageCreate(BaseModel):
+    url: str = Field(..., min_length=1)
+    caption: Optional[str] = Field(None, max_length=255)
+    sort_order: int = Field(0, ge=0)
+
+
+class ServiceOrderImageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    service_order_id: UUID
+    url: str
+    caption: Optional[str] = None
+    sort_order: int
+    created_at: datetime
+
+
 class ServiceOrderResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -121,6 +138,7 @@ class ServiceOrderResponse(BaseModel):
     service_contract_id: Optional[UUID] = None
     parent_order_id: Optional[UUID] = None
     portal_submitted_json: Optional[dict[str, Any]] = None
+    images: list[ServiceOrderImageResponse] = []
 
 
 class OrderTimelineEntryResponse(BaseModel):

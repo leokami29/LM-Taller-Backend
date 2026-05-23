@@ -1,4 +1,7 @@
+import csv
+from datetime import datetime
 from decimal import Decimal
+from io import StringIO
 from typing import Optional
 from uuid import UUID
 
@@ -18,6 +21,7 @@ from app.dependencies import RequirePermission, ensure_not_viewer_for_mutation
 from app.db.models.customer import Customer
 from app.db.models.rbac import Site
 from app.db.models.service_order import ServiceOrder, ServiceOrderCostLine, ServiceOrderTimeline
+from app.db.models.service_order_image import ServiceOrderImage
 from app.db.models.user import User
 from app.db.session import get_db
 from app.schemas.common import PaginatedResponse
@@ -29,12 +33,15 @@ from app.schemas.service_order import (
     ServiceOrderCostLineUpdate,
     NextOrderNumberResponse,
     ServiceOrderCreate,
+    ServiceOrderImageCreate,
+    ServiceOrderImageResponse,
     ServiceOrderResponse,
     ServiceOrderStatusPatch,
     OrderTimelineEntryResponse,
     ServiceOrderUpdate,
 )
 from app.services.permission_service import PermissionService
+from app.services.order_pdf_service import generate_order_pdf
 from app.services.order_service import (
     add_cost_line,
     change_order_status,
@@ -54,6 +61,59 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 def _require_non_reception_for_costs(user: User) -> None:
     if user.role == UserRole.RECEPTION:
         raise HTTPException(status_code=403, detail="Recepción no puede modificar costos")
+
+
+@router.get("/export")
+def export_orders(
+    status_filter: Optional[OrderStatus] = Query(None, alias="status"),
+    order_kind: Optional[ServiceOrderKind] = Query(None),
+    date_from: Optional[datetime] = Query(None),
+    date_to: Optional[datetime] = Query(None),
+    current_user: User = Depends(RequirePermission(ORDERS_READ)),
+    db: Session = Depends(get_db),
+) -> Response:
+    q = db.query(ServiceOrder).filter(ServiceOrder.company_id == current_user.company_id)
+    if status_filter:
+        q = q.filter(ServiceOrder.status == status_filter)
+    if order_kind:
+        q = q.filter(ServiceOrder.order_kind == order_kind)
+    if date_from:
+        q = q.filter(ServiceOrder.created_at >= date_from)
+    if date_to:
+        q = q.filter(ServiceOrder.created_at <= date_to)
+    orders = q.order_by(ServiceOrder.created_at.desc()).all()
+
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "order_number", "order_kind", "status", "priority",
+        "customer", "equipment_serial", "problem_description",
+        "diagnosis_notes", "cost_parts", "cost_labor", "total_cost",
+        "created_at",
+    ])
+    for order in orders:
+        writer.writerow([
+            order.order_number,
+            order.order_kind.value if order.order_kind else "",
+            order.status.value if order.status else "",
+            order.priority.value if order.priority else "",
+            f"{order.current_customer.first_name} {order.current_customer.last_name}" if order.current_customer else "",
+            order.equipment.serial_number if order.equipment else "",
+            (order.problem_description or "").replace("\n", " "),
+            (order.diagnosis_notes or "").replace("\n", " "),
+            float(order.cost_parts or 0),
+            float(order.cost_labor or 0),
+            float(order.total_cost or 0),
+            order.created_at.isoformat() if order.created_at else "",
+        ])
+
+    csv_bytes = output.getvalue().encode("utf-8-sig")
+    output.close()
+    return Response(
+        content=csv_bytes,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="ordenes.csv"'},
+    )
 
 
 @router.get("/", response_model=PaginatedResponse[ServiceOrderResponse])
@@ -492,4 +552,110 @@ def get_order_parts(
         .order_by(InventoryMovement.moved_at.desc())
         .all()
     )
+
+
+@router.get("/{order_id}/print")
+def print_order(
+    order_id: UUID,
+    current_user: User = Depends(RequirePermission(ORDERS_READ)),
+    db: Session = Depends(get_db),
+) -> Response:
+    order = (
+        db.query(ServiceOrder)
+        .options(
+            joinedload(ServiceOrder.current_customer),
+            joinedload(ServiceOrder.equipment),
+            joinedload(ServiceOrder.cost_lines),
+            joinedload(ServiceOrder.timeline_entries),
+        )
+        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
+        .first()
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    pdf_bytes = generate_order_pdf(order)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="orden-{order.order_number}.pdf"'},
+    )
+
+
+@router.get("/{order_id}/images", response_model=list[ServiceOrderImageResponse])
+def list_order_images(
+    order_id: UUID,
+    current_user: User = Depends(RequirePermission(ORDERS_READ)),
+    db: Session = Depends(get_db),
+) -> list[ServiceOrderImage]:
+    order = (
+        db.query(ServiceOrder)
+        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
+        .first()
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    return (
+        db.query(ServiceOrderImage)
+        .filter(ServiceOrderImage.service_order_id == order_id)
+        .order_by(ServiceOrderImage.sort_order, ServiceOrderImage.created_at)
+        .all()
+    )
+
+
+@router.post(
+    "/{order_id}/images",
+    response_model=ServiceOrderImageResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_order_image(
+    order_id: UUID,
+    payload: ServiceOrderImageCreate,
+    current_user: User = Depends(RequirePermission(ORDERS_WRITE)),
+    db: Session = Depends(get_db),
+) -> ServiceOrderImage:
+    ensure_not_viewer_for_mutation(current_user)
+    order = (
+        db.query(ServiceOrder)
+        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
+        .first()
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    image = ServiceOrderImage(
+        service_order_id=order_id,
+        url=payload.url,
+        caption=payload.caption,
+        sort_order=payload.sort_order,
+    )
+    db.add(image)
+    db.commit()
+    db.refresh(image)
+    return image
+
+
+@router.delete("/{order_id}/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_order_image(
+    order_id: UUID,
+    image_id: UUID,
+    current_user: User = Depends(RequirePermission(ORDERS_WRITE)),
+    db: Session = Depends(get_db),
+) -> Response:
+    ensure_not_viewer_for_mutation(current_user)
+    order = (
+        db.query(ServiceOrder)
+        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
+        .first()
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    image = (
+        db.query(ServiceOrderImage)
+        .filter(ServiceOrderImage.id == image_id, ServiceOrderImage.service_order_id == order_id)
+        .first()
+    )
+    if not image:
+        raise HTTPException(status_code=404, detail="Imagen no encontrada")
+    db.delete(image)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 

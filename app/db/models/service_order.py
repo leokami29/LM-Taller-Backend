@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from app.db.models.equipment import Equipment
     from app.db.models.rbac import Site
     from app.db.models.service_contract import ServiceContract
+    from app.db.models.service_order_image import ServiceOrderImage
     from app.db.models.user import User
 
 
@@ -107,6 +108,9 @@ class ServiceOrder(Base):
     )
     timeline_entries: Mapped[list["ServiceOrderTimeline"]] = relationship(
         "ServiceOrderTimeline", back_populates="service_order", cascade="all, delete-orphan"
+    )
+    images: Mapped[list["ServiceOrderImage"]] = relationship(
+        "ServiceOrderImage", back_populates="order", cascade="all, delete-orphan", order_by="ServiceOrderImage.sort_order"
     )
 
 

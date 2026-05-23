@@ -67,6 +67,15 @@ class PortalOrderCreate(BaseModel):
     portal_submitted_json: Optional[dict[str, Any]] = None
 
 
+class PortalEquipmentSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    serial_number: str
+    brand: Optional[str] = None
+    model: Optional[str] = None
+
+
 class PortalOrderResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -77,8 +86,15 @@ class PortalOrderResponse(BaseModel):
     priority: OrderPriority
     problem_description: str
     equipment_id: UUID
+    equipment: Optional[PortalEquipmentSummary] = None
+    original_owner_id: Optional[UUID] = None
     service_contract_id: Optional[UUID]
     portal_submitted_json: Optional[dict[str, Any]]
+    diagnosis_notes: Optional[str] = None
+    cost_parts: Optional[float] = None
+    cost_labor: Optional[float] = None
+    total_cost: Optional[float] = None
+    images: list[Any] = []
     created_at: datetime
     updated_at: datetime
     estimated_completion: Optional[datetime] = None

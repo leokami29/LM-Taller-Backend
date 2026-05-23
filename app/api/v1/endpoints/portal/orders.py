@@ -1,20 +1,23 @@
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.contract_template import validate_submitted_against_template
-from app.core.enums import PORTAL_ALLOWED_ORDER_KINDS, ServiceOrderKind
+from app.core.enums import OrderStatus, PORTAL_ALLOWED_ORDER_KINDS, ServiceOrderKind
+from app.core.exceptions import InvalidOrderTransitionError
 from app.dependencies import PortalContext, get_portal_context
 from app.db.models.equipment import Equipment
 from app.db.models.service_contract import ServiceContract
-from app.db.models.service_order import ServiceOrder
+from app.db.models.service_order import ServiceOrder, ServiceOrderCostLine, ServiceOrderTimeline
 from app.db.session import get_db
 from app.schemas.common import PaginatedResponse
 from app.schemas.portal import PortalOrderCreate, PortalOrderResponse
+from app.schemas.service_order import OrderTimelineEntryResponse, ServiceOrderCostLineResponse, ServiceOrderImageResponse
 from app.services.contract_service import contract_is_active, count_contract_orders_this_month
-from app.services.order_service import create_service_order
+from app.services.order_service import change_order_status, create_service_order
 from app.services.permission_service import PermissionService
 
 router = APIRouter(prefix="/orders", tags=["portal-orders"])
@@ -24,6 +27,10 @@ router = APIRouter(prefix="/orders", tags=["portal-orders"])
 def portal_list_orders(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
+    status_filter: Optional[OrderStatus] = Query(None, alias="status"),
+    search: Optional[str] = Query(None),
+    date_from: Optional[datetime] = Query(None),
+    date_to: Optional[datetime] = Query(None),
     ctx: PortalContext = Depends(get_portal_context),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -31,8 +38,25 @@ def portal_list_orders(
         ServiceOrder.company_id == ctx.company_id,
         ServiceOrder.current_customer_id == ctx.customer_id,
     )
+    if status_filter:
+        q = q.filter(ServiceOrder.status == status_filter)
+    if search:
+        term = f"%{search.lower()}%"
+        q = q.filter(
+            ServiceOrder.order_number.ilike(term) | ServiceOrder.problem_description.ilike(term)
+        )
+    if date_from:
+        q = q.filter(ServiceOrder.created_at >= date_from)
+    if date_to:
+        q = q.filter(ServiceOrder.created_at <= date_to)
     total = q.count()
-    items = q.order_by(ServiceOrder.created_at.desc()).offset(skip).limit(limit).all()
+    items = (
+        q.options(joinedload(ServiceOrder.equipment))
+        .order_by(ServiceOrder.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
     return {"items": items, "total": total, "skip": skip, "limit": limit}
 
 
@@ -127,3 +151,102 @@ def portal_create_order(
         return order
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.get("/{order_id}/timeline", response_model=list[OrderTimelineEntryResponse])
+def portal_get_order_timeline(
+    order_id: UUID,
+    ctx: PortalContext = Depends(get_portal_context),
+    db: Session = Depends(get_db),
+) -> list[OrderTimelineEntryResponse]:
+    row = (
+        db.query(ServiceOrder)
+        .filter(
+            ServiceOrder.id == order_id,
+            ServiceOrder.company_id == ctx.company_id,
+            ServiceOrder.current_customer_id == ctx.customer_id,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    entries = (
+        db.query(ServiceOrderTimeline)
+        .options(joinedload(ServiceOrderTimeline.changed_by))
+        .filter(ServiceOrderTimeline.service_order_id == order_id)
+        .order_by(ServiceOrderTimeline.changed_at.desc())
+        .all()
+    )
+    return [
+        OrderTimelineEntryResponse(
+            id=e.id,
+            kind="created" if e.old_status is None else "status_change",
+            timestamp=e.changed_at,
+            old_status=e.old_status,
+            new_status=e.new_status,
+            notes=e.notes,
+            time_spent_seconds=e.time_spent_seconds,
+            changed_by_id=e.changed_by_id,
+            changed_by_name=e.changed_by.full_name if e.changed_by else None,
+        )
+        for e in entries
+    ]
+
+
+@router.get("/{order_id}/cost-lines", response_model=list[ServiceOrderCostLineResponse])
+def portal_get_order_cost_lines(
+    order_id: UUID,
+    ctx: PortalContext = Depends(get_portal_context),
+    db: Session = Depends(get_db),
+) -> list[ServiceOrderCostLineResponse]:
+    row = (
+        db.query(ServiceOrder)
+        .filter(
+            ServiceOrder.id == order_id,
+            ServiceOrder.company_id == ctx.company_id,
+            ServiceOrder.current_customer_id == ctx.customer_id,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    return (
+        db.query(ServiceOrderCostLine)
+        .filter(ServiceOrderCostLine.service_order_id == order_id)
+        .order_by(ServiceOrderCostLine.sort_order, ServiceOrderCostLine.created_at)
+        .all()
+    )
+
+
+@router.post("/{order_id}/cancel", response_model=PortalOrderResponse)
+def portal_cancel_order(
+    order_id: UUID,
+    ctx: PortalContext = Depends(get_portal_context),
+    db: Session = Depends(get_db),
+) -> ServiceOrder:
+    order = (
+        db.query(ServiceOrder)
+        .filter(
+            ServiceOrder.id == order_id,
+            ServiceOrder.company_id == ctx.company_id,
+            ServiceOrder.current_customer_id == ctx.customer_id,
+        )
+        .first()
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    if order.status in (OrderStatus.DELIVERED, OrderStatus.CANCELLED):
+        raise HTTPException(status_code=400, detail="Esta orden no puede ser cancelada")
+    try:
+        change_order_status(
+            db,
+            order=order,
+            new_status=OrderStatus.CANCELLED,
+            changed_by=None,
+            notes="Cancelada desde el portal por el cliente",
+        )
+        db.commit()
+        db.refresh(order)
+        return order
+    except InvalidOrderTransitionError as e:
+        raise HTTPException(status_code=400, detail=e.message) from e

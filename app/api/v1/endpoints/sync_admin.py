@@ -32,6 +32,7 @@ from app.db.models.equipment import Equipment, EquipmentAttribute
 from app.db.models.inventory import InventoryItem, InventoryMovement
 from app.db.models.service_contract import ServiceContract
 from app.db.models.service_order import ServiceOrder
+from app.db.models.service_order_image import ServiceOrderImage
 from app.db.models.rbac import Site, UserSiteRole
 from app.db.models.user import User
 from app.db.session import catalog_session_scope, tenant_session_for_company
@@ -92,6 +93,7 @@ class AdminSyncSnapshot(BaseModel):
     equipment: list[dict[str, Any]] = Field(default_factory=list)
     equipment_attributes: list[dict[str, Any]] = Field(default_factory=list)
     service_orders: list[dict[str, Any]] = Field(default_factory=list)
+    service_order_images: list[dict[str, Any]] = Field(default_factory=list)
     inventory_items: list[dict[str, Any]] = Field(default_factory=list)
     inventory_movements: list[dict[str, Any]] = Field(default_factory=list)
     service_contracts: list[dict[str, Any]] = Field(default_factory=list)
@@ -160,6 +162,13 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
     customers = ctx.db.query(Customer).filter(Customer.company_id == ctx.company_id).order_by(Customer.created_at.desc()).all()
     equipment = ctx.db.query(Equipment).filter(Equipment.company_id == ctx.company_id).order_by(Equipment.created_at.desc()).all()
     orders = ctx.db.query(ServiceOrder).filter(ServiceOrder.company_id == ctx.company_id).order_by(ServiceOrder.created_at.desc()).all()
+    order_ids = [o.id for o in orders]
+    order_images = (
+        ctx.db.query(ServiceOrderImage)
+        .filter(ServiceOrderImage.service_order_id.in_(order_ids))
+        .order_by(ServiceOrderImage.sort_order, ServiceOrderImage.created_at)
+        .all()
+    ) if order_ids else []
     inv_items = ctx.db.query(InventoryItem).filter(InventoryItem.company_id == ctx.company_id).order_by(InventoryItem.created_at.desc()).all()
     inv_item_ids = [i.id for i in inv_items]
     inv_movements = (
@@ -186,6 +195,7 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
     customer_rows = [_row(c) for c in customers]
     equipment_rows = [_row(e) for e in equipment]
     order_rows = [_row(o) for o in orders]
+    order_image_rows = [_row(i) for i in order_images]
     item_rows = [_row(i) for i in inv_items]
     movement_rows = [_row(m) for m in inv_movements]
     contract_rows = [_row(c) for c in contracts]
@@ -195,6 +205,7 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
         cursor=_max_cursor(
             [company_row], site_rows, user_rows, role_rows,
             customer_rows, equipment_rows, order_rows, item_rows, movement_rows, contract_rows,
+            order_image_rows,
         ),
         company=company_row,
         sites=site_rows,
@@ -216,6 +227,7 @@ def _snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
         equipment=equipment_rows,
         equipment_attributes=eq_attr_rows,
         service_orders=order_rows,
+        service_order_images=order_image_rows,
         inventory_items=item_rows,
         inventory_movements=movement_rows,
         service_contracts=contract_rows,
@@ -535,6 +547,7 @@ def pull_admin(
     snapshot.customers = [row for row in snapshot.customers if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
     snapshot.equipment = [row for row in snapshot.equipment if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
     snapshot.service_orders = [row for row in snapshot.service_orders if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
+    snapshot.service_order_images = [row for row in snapshot.service_order_images if row.get("created_at") and str(row["created_at"]) > since.isoformat()]
     snapshot.inventory_items = [row for row in snapshot.inventory_items if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
     snapshot.inventory_movements = [row for row in snapshot.inventory_movements if row.get("moved_at") and str(row["moved_at"]) > since.isoformat()]
     snapshot.service_contracts = [row for row in snapshot.service_contracts if row.get("updated_at") and str(row["updated_at"]) > since.isoformat()]
@@ -544,6 +557,11 @@ def pull_admin(
         attr for attr in snapshot.equipment_attributes
         if str(attr.get("equipment_id")) in eq_ids_in_snapshot
     ]
+    order_ids_in_snapshot = {str(o.get("id")) for o in snapshot.service_orders}
+    snapshot.service_order_images = [
+        img for img in snapshot.service_order_images
+        if str(img.get("service_order_id")) in order_ids_in_snapshot
+    ]
     if snapshot.company.get("updated_at") and str(snapshot.company["updated_at"]) <= since.isoformat():
         snapshot.company = {}
     snapshot.cursor = _max_cursor(
@@ -551,6 +569,7 @@ def pull_admin(
         snapshot.sites, snapshot.users, snapshot.user_site_roles,
         snapshot.customers, snapshot.equipment, snapshot.service_orders,
         snapshot.inventory_items, snapshot.inventory_movements, snapshot.service_contracts,
+        snapshot.service_order_images,
     )
     return _attach_license(ctx, snapshot, installation_id=installation_id, hostname=hostname)
 
