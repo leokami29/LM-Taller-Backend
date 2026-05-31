@@ -46,9 +46,17 @@ def technicians_performance(
     date_from: Optional[datetime] = None,
     date_to: Optional[datetime] = None,
 ) -> list[dict[str, Any]]:
+    active_statuses = [
+        OrderStatus.RECEIVED,
+        OrderStatus.DIAGNOSING,
+        OrderStatus.WAITING_PARTS,
+        OrderStatus.IN_REPAIR,
+    ]
+
     join_cond = [
         ServiceOrder.assigned_to_id == User.id,
         ServiceOrder.company_id == company_id,
+        ServiceOrder.status.in_(active_statuses),
     ]
     if date_from is not None:
         join_cond.append(ServiceOrder.created_at >= date_from)
@@ -62,12 +70,53 @@ def technicians_performance(
             func.count(ServiceOrder.id).label("assigned_orders"),
         )
         .outerjoin(ServiceOrder, and_(*join_cond))
-        .filter(User.company_id == company_id, User.role == UserRole.TECHNICIAN)
+        .filter(
+            User.company_id == company_id,
+            User.is_active.is_(True),
+            User.role == UserRole.TECHNICIAN,
+        )
         .group_by(User.id, User.full_name)
+        .order_by(func.count(ServiceOrder.id).desc())
     )
     rows = q.all()
     out: list[dict[str, Any]] = []
     for row in rows:
+        out.append(
+            {
+                "user_id": str(row.id),
+                "full_name": row.full_name,
+                "assigned_orders": int(row.assigned_orders or 0),
+            }
+        )
+
+    if out:
+        return out
+
+    # Fallback: talleres sin rol technician explícito pero con órdenes asignadas.
+    fallback_q = (
+        db.query(
+            User.id,
+            User.full_name,
+            func.count(ServiceOrder.id).label("assigned_orders"),
+        )
+        .join(
+            ServiceOrder,
+            and_(
+                ServiceOrder.assigned_to_id == User.id,
+                ServiceOrder.company_id == company_id,
+                ServiceOrder.status.in_(active_statuses),
+            ),
+        )
+        .filter(User.company_id == company_id, User.is_active.is_(True))
+        .group_by(User.id, User.full_name)
+        .order_by(func.count(ServiceOrder.id).desc())
+    )
+    if date_from is not None:
+        fallback_q = fallback_q.filter(ServiceOrder.created_at >= date_from)
+    if date_to is not None:
+        fallback_q = fallback_q.filter(ServiceOrder.created_at <= date_to)
+
+    for row in fallback_q.all():
         out.append(
             {
                 "user_id": str(row.id),
