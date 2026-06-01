@@ -483,7 +483,70 @@ def ensure_secondary_demodata(
                     generated_by_id=admin.id),
     ])
 
-    company.next_order_number = max(int(company.next_order_number or 1), 10)
+    # --- Órdenes históricas (completadas) ---
+    order5 = _mk(5, eq_a, cust1, OrderStatus.COMPLETED, OrderPriority.MEDIUM,
+                 tech_a, "Pantalla con líneas — reparada.", "Pantalla genérica instalada.",
+                 Decimal("95000"), Decimal("45000"), da=20)
+    order5.actual_completion = now - timedelta(days=18)
+    order6 = _mk(6, eq_b, cust2, OrderStatus.DELIVERED, OrderPriority.HIGH,
+                 tech_b, "Laptop no encendía — reparada.", "Limpieza placa y reemplazo MOSFET.",
+                 Decimal("180000"), Decimal("120000"), da=30,
+                 kind=ServiceOrderKind.WORKSHOP_INTAKE_CONTRACT)
+    order6.actual_completion = now - timedelta(days=27)
+    session.add_all([order5, order6])
+    session.flush()
+
+    for order in [order5, order6]:
+        if order.cost_parts > 0:
+            session.add(ServiceOrderCostLine(
+                company_id=company.id, service_order_id=order.id,
+                category=CostLineCategory.PARTS,
+                description="Repuestos (demo norte histórico)",
+                amount=order.cost_parts, sort_order=0))
+        if order.cost_labor > 0:
+            session.add(ServiceOrderCostLine(
+                company_id=company.id, service_order_id=order.id,
+                category=CostLineCategory.LABOR,
+                description="Mano de obra (demo norte histórico)",
+                amount=order.cost_labor, sort_order=1))
+    session.flush()
+    for order in [order5, order6]:
+        recompute_total_cost(session, order)
+
+    session.add_all([
+        ServiceOrderTimeline(service_order_id=order5.id, old_status=None,
+                             new_status=OrderStatus.RECEIVED.value,
+                             changed_by_id=recep.id, notes="Ingreso reparación pantalla"),
+        ServiceOrderTimeline(service_order_id=order5.id,
+                             old_status=OrderStatus.RECEIVED.value,
+                             new_status=OrderStatus.IN_REPAIR.value,
+                             changed_by_id=tech_a.id, notes="Reparación en curso", time_spent_seconds=5400),
+        ServiceOrderTimeline(service_order_id=order5.id,
+                             old_status=OrderStatus.IN_REPAIR.value,
+                             new_status=OrderStatus.COMPLETED.value,
+                             changed_by_id=tech_a.id, notes="Pantalla instalada y calibrada"),
+        ServiceOrderTimeline(service_order_id=order6.id, old_status=None,
+                             new_status=OrderStatus.RECEIVED.value,
+                             changed_by_id=recep.id, notes="Ingreso laptop corporativa"),
+        ServiceOrderTimeline(service_order_id=order6.id,
+                             old_status=OrderStatus.RECEIVED.value,
+                             new_status=OrderStatus.DIAGNOSING.value,
+                             changed_by_id=tech_b.id, notes="Daño líquido confirmado", time_spent_seconds=3600),
+        ServiceOrderTimeline(service_order_id=order6.id,
+                             old_status=OrderStatus.DIAGNOSING.value,
+                             new_status=OrderStatus.IN_REPAIR.value,
+                             changed_by_id=tech_b.id, notes="Reemplazo MOSFET en progreso"),
+        ServiceOrderTimeline(service_order_id=order6.id,
+                             old_status=OrderStatus.IN_REPAIR.value,
+                             new_status=OrderStatus.COMPLETED.value,
+                             changed_by_id=tech_b.id, notes="Laptop enciende OK"),
+        ServiceOrderTimeline(service_order_id=order6.id,
+                             old_status=OrderStatus.COMPLETED.value,
+                             new_status=OrderStatus.DELIVERED.value,
+                             changed_by_id=recep.id, notes="Entregado al cliente"),
+    ])
+
+    company.next_order_number = max(int(company.next_order_number or 1), 10 + 6)
 
     print(f"  Creado tenant secundario: {company.name} (NIT {SECOND_DEMO_NIT})")
     print(f"    Admin: admin.norte@{DEMO_EMAIL_DOMAIN} / {DEMO_PASSWORD}")

@@ -424,7 +424,7 @@ def populate_primary_demo_company(
     inv_low = InventoryItem(
         company_id=cid, item_type="consumible", sku="ALC-IPA-1L",
         name="Alcohol isopropílico 1L", category="Laboratorio",
-        quantity_stock=Decimal("1"), quantity_minimum=Decimal("3"),
+        quantity_stock=Decimal("3"), quantity_minimum=Decimal("3"),
         unit_cost=Decimal("12000"), unit_price=Decimal("22000"),
         supplier_id=sup2.id, weight=Decimal("1.0"), dimensions_json={})
     inv_tool = InventoryItem(
@@ -489,7 +489,7 @@ def populate_primary_demo_company(
                           moved_by_id=admin.id),
         InventoryMovement(inventory_item_id=inv_low.id,
                           movement_type=InventoryMovementType.ADJUSTMENT,
-                          quantity_change=Decimal("-2"), notes="Ajuste inventario físico",
+                          quantity_change=Decimal("-1"), notes="Ajuste inventario físico",
                           moved_by_id=recep.id),
         InventoryMovement(inventory_item_id=inv_battery.id,
                           movement_type=InventoryMovementType.DAMAGE,
@@ -617,9 +617,12 @@ def populate_primary_demo_company(
                  tech5, "SSD no detectado tras formateo.",
                  "Reemplazo de SSD NVMe en curso.",
                  Decimal("280000"), Decimal("60000"), recep, site=sur, days_ago=4)
+    o19 = _order(cid, next_num(), eq5, c5, OrderStatus.RECEIVED, OrderPriority.MEDIUM,
+                 None, "S Pen no responde — pendiente asignación de técnico.", None,
+                 Decimal("0"), Decimal("0"), recep, site=norte, days_ago=0)
 
     active_orders = [o1, o2, o3, o4, o5, o6, o7, o8, o9, o10,
-                     o11, o12, o13, o14, o15, o16, o17, o18]
+                     o11, o12, o13, o14, o15, o16, o17, o18, o19]
     session.add_all(active_orders)
     session.flush()
 
@@ -733,6 +736,8 @@ def populate_primary_demo_company(
         _timeline_entry(o18, None, OrderStatus.RECEIVED, recep, "HP Pavilion SSD no detectado"),
         _timeline_entry(o18, OrderStatus.RECEIVED, OrderStatus.DIAGNOSING, tech5, "SSD muerto — reemplazo necesario", 1800),
         _timeline_entry(o18, OrderStatus.DIAGNOSING, OrderStatus.IN_REPAIR, tech5, "Instalando SSD NVMe nuevo", 2700),
+        # o19 — RECEIVED sin técnico (Norte)
+        _timeline_entry(o19, None, OrderStatus.RECEIVED, recep2, "Tablet S Pen — sin técnico asignado"),
     ]
     # Timelines históricas compactas
     for ho in history_orders[:10]:
@@ -811,12 +816,12 @@ def populate_primary_demo_company(
     # Ajustar stocks netos
     inv_screen.quantity_stock = Decimal("2") + Decimal("5") - Decimal("1")  # = 6
     inv_battery.quantity_stock = Decimal("12") - Decimal("1") + Decimal("3") - Decimal("1")  # = 13
-    inv_ssd.quantity_stock = Decimal("8") - Decimal("1")  # = 7
-    inv_low.quantity_stock = Decimal("1") - Decimal("1")  # = 0 (bajo mínimo)
+    inv_ssd.quantity_stock = Decimal("8") + Decimal("10") - Decimal("1")  # = 17
+    inv_low.quantity_stock = Decimal("3") - Decimal("1") - Decimal("1")  # = 1 (bajo mínimo)
     inv_tool.quantity_stock = Decimal("7") - Decimal("1")  # = 6
     inv_case.quantity_stock = Decimal("38") - Decimal("2")  # = 36
     inv_bat_apple.quantity_stock = Decimal("1") - Decimal("1")  # = 0 (bajo mínimo)
-    inv_pasta.quantity_stock = Decimal("15") - Decimal("2")  # = 13
+    inv_pasta.quantity_stock = Decimal("15") + Decimal("20") - Decimal("2")  # = 33
 
     # -----------------------------------------------------------------------
     # PDFs — distintos tipos
@@ -978,6 +983,10 @@ def populate_primary_demo_company(
         order_kind=ServiceOrderKind.WORKSHOP_INTAKE_CONTRACT,
         service_contract=contract_main, days_ago=5,
     )
+    portal_order1.portal_submitted_json = {
+        "location": "Carrera 15 # 90-10, Bogotá",
+        "urgency": "alta",
+    }
     portal_order2 = _order(
         cid, next_num(), eq2, c2, OrderStatus.COMPLETED, OrderPriority.LOW,
         tech2, "Limpieza interna semestral.", "Limpieza completada sin novedades.",
@@ -985,10 +994,24 @@ def populate_primary_demo_company(
         order_kind=ServiceOrderKind.WORKSHOP_INTAKE_CONTRACT,
         service_contract=contract_main, days_ago=60,
     )
-    session.add_all([portal_order1, portal_order2])
+    # Orden de servicio en campo vinculada al contrato SLA
+    field_order = _order(
+        cid, next_num(), eq9, c7, OrderStatus.RECEIVED, OrderPriority.HIGH,
+        tech3, "Visita en campo — conector MagSafe doblado, equipo no carga.", None,
+        Decimal("0"), Decimal("0"), recep2, site=norte,
+        order_kind=ServiceOrderKind.FIELD_SERVICE_CONTRACT,
+        service_contract=contract_sla, days_ago=1,
+        original_owner=c7,
+    )
+    session.add_all([portal_order1, portal_order2, field_order])
     session.flush()
     _cost_lines(session, cid, portal_order1)
     _cost_lines(session, cid, portal_order2)
+    _cost_lines(session, cid, field_order)
+
+    # Timeline para orden de campo
+    session.add(_timeline_entry(field_order, None, OrderStatus.RECEIVED, recep2,
+                                 "Visita campo — SLA Tecnologías del Pacífico"))
 
     # Escenarios adicionales y ajuste del contador de órdenes
     apply_primary_extended_scenarios(
