@@ -50,8 +50,13 @@ from app.services.tenant_config_events import (
 
 router = APIRouter(prefix="/sync/admin", tags=["sync-admin"])
 
-SyncEntity = Literal["company", "site", "user", "user_site_role", "session_policy", "role_change_request", "temporary_permission", "audit_log"]
-SyncOp = Literal["create", "update", "delete", "deactivate", "reset_password"]
+SyncEntity = Literal[
+    "company", "site", "user", "user_site_role", "session_policy",
+    "role_change_request", "temporary_permission", "audit_log",
+    # Entidades operativas (desktop offline)
+    "customer", "equipment", "service_order", "inventory_item", "service_contract",
+]
+SyncOp = Literal["create", "update", "delete", "deactivate", "reset_password", "status_change", "stock_change"]
 
 
 class AdminMutation(BaseModel):
@@ -487,6 +492,229 @@ def _apply_user_site_role(ctx: SyncContext, mutation: AdminMutation) -> AdminPus
     return _applied(mutation)
 
 
+def _apply_customer(ctx: SyncContext, mutation: AdminMutation) -> AdminPushItemResult:
+    from app.core.enums import IdentificationType
+    customer = ctx.db.query(Customer).filter(Customer.id == mutation.entity_id, Customer.company_id == ctx.company_id).first()
+    if mutation.op == "create":
+        if customer:
+            return _applied(mutation)
+        customer = Customer(
+            id=mutation.entity_id,
+            company_id=ctx.company_id,
+            first_name=str(mutation.payload.get("first_name", "")),
+            last_name=str(mutation.payload.get("last_name", "")),
+            email=mutation.payload.get("email"),
+            phone=mutation.payload.get("phone"),
+            address=mutation.payload.get("address"),
+            identification_type=(
+                IdentificationType(mutation.payload["identification_type"])
+                if mutation.payload.get("identification_type") else None
+            ),
+            identification_number=mutation.payload.get("identification_number"),
+            rut=mutation.payload.get("rut"),
+            city=mutation.payload.get("city"),
+            country=mutation.payload.get("country"),
+            notes=mutation.payload.get("notes"),
+            updated_at=mutation.updated_at,
+        )
+        ctx.db.add(customer)
+        return _applied(mutation)
+    if not customer:
+        return _rejected(mutation, "Cliente no encontrado")
+    conflict = _reject_if_stale(customer, mutation)
+    if conflict:
+        return conflict
+    if mutation.op == "delete":
+        customer.is_active = False if hasattr(customer, "is_active") else None
+        ctx.db.delete(customer)
+    elif mutation.op == "update":
+        for key in ("first_name", "last_name", "email", "phone", "address",
+                    "identification_number", "rut", "city", "country", "notes"):
+            if key in mutation.payload:
+                setattr(customer, key, mutation.payload[key])
+    else:
+        return _rejected(mutation, "Operación no soportada para customer")
+    customer.updated_at = mutation.updated_at
+    ctx.db.add(customer)
+    return _applied(mutation)
+
+
+def _apply_equipment(ctx: SyncContext, mutation: AdminMutation) -> AdminPushItemResult:
+    equipment = ctx.db.query(Equipment).filter(Equipment.id == mutation.entity_id, Equipment.company_id == ctx.company_id).first()
+    if mutation.op == "create":
+        if equipment:
+            return _applied(mutation)
+        equipment = Equipment(
+            id=mutation.entity_id,
+            company_id=ctx.company_id,
+            serial_number=str(mutation.payload.get("serial_number", "")),
+            equipment_type=mutation.payload.get("equipment_type"),
+            category=mutation.payload.get("category"),
+            brand=mutation.payload.get("brand"),
+            model=mutation.payload.get("model"),
+            original_owner_id=(
+                UUID(str(mutation.payload["original_owner_id"]))
+                if mutation.payload.get("original_owner_id") else None
+            ),
+            updated_at=mutation.updated_at,
+        )
+        ctx.db.add(equipment)
+        return _applied(mutation)
+    if not equipment:
+        return _rejected(mutation, "Equipo no encontrado")
+    conflict = _reject_if_stale(equipment, mutation)
+    if conflict:
+        return conflict
+    if mutation.op in ("update", "status_change"):
+        allowed = (
+            "equipment_type", "category", "subcategory", "brand", "model",
+            "manufacturer", "imei", "color", "barcode", "status", "location",
+            "additional_notes", "custom_fields",
+        )
+        for key in allowed:
+            if key in mutation.payload:
+                setattr(equipment, key, mutation.payload[key])
+    elif mutation.op == "delete":
+        ctx.db.delete(equipment)
+    else:
+        return _rejected(mutation, "Operación no soportada para equipment")
+    equipment.updated_at = mutation.updated_at
+    ctx.db.add(equipment)
+    return _applied(mutation)
+
+
+def _apply_service_order(ctx: SyncContext, mutation: AdminMutation) -> AdminPushItemResult:
+    from app.core.enums import OrderStatus, OrderPriority
+    order = ctx.db.query(ServiceOrder).filter(ServiceOrder.id == mutation.entity_id, ServiceOrder.company_id == ctx.company_id).first()
+    if mutation.op == "create":
+        if order:
+            return _applied(mutation)
+        try:
+            order = ServiceOrder(
+                id=mutation.entity_id,
+                company_id=ctx.company_id,
+                order_number=str(mutation.payload.get("order_number", "")),
+                order_kind=mutation.payload.get("order_kind", "workshop_intake"),
+                equipment_id=UUID(str(mutation.payload["equipment_id"])) if mutation.payload.get("equipment_id") else None,
+                current_customer_id=UUID(str(mutation.payload["current_customer_id"])) if mutation.payload.get("current_customer_id") else None,
+                status=OrderStatus(mutation.payload.get("status", "received")),
+                priority=OrderPriority(mutation.payload.get("priority", "medium")),
+                problem_description=str(mutation.payload.get("problem_description", "")),
+                assigned_to_id=UUID(str(mutation.payload["assigned_to_id"])) if mutation.payload.get("assigned_to_id") else None,
+                site_id=UUID(str(mutation.payload["site_id"])) if mutation.payload.get("site_id") else None,
+                updated_at=mutation.updated_at,
+            )
+        except (KeyError, ValueError) as exc:
+            return _rejected(mutation, f"Payload inválido para service_order: {exc}")
+        ctx.db.add(order)
+        return _applied(mutation)
+    if not order:
+        return _rejected(mutation, "Orden no encontrada")
+    conflict = _reject_if_stale(order, mutation)
+    if conflict:
+        return conflict
+    if mutation.op in ("update", "status_change"):
+        allowed = (
+            "status", "priority", "assigned_to_id", "diagnosis_notes",
+            "estimated_completion", "actual_completion", "cost_parts",
+            "cost_labor", "total_cost", "device_condition_on_entry", "site_id",
+        )
+        for key in allowed:
+            if key in mutation.payload:
+                val = mutation.payload[key]
+                if key in ("assigned_to_id", "site_id") and val:
+                    val = UUID(str(val))
+                elif key == "status":
+                    from app.core.enums import OrderStatus
+                    val = OrderStatus(val)
+                elif key == "priority":
+                    from app.core.enums import OrderPriority
+                    val = OrderPriority(val)
+                setattr(order, key, val)
+    elif mutation.op == "delete":
+        ctx.db.delete(order)
+    else:
+        return _rejected(mutation, "Operación no soportada para service_order")
+    order.updated_at = mutation.updated_at
+    ctx.db.add(order)
+    return _applied(mutation)
+
+
+def _apply_inventory_item(ctx: SyncContext, mutation: AdminMutation) -> AdminPushItemResult:
+    item = ctx.db.query(InventoryItem).filter(InventoryItem.id == mutation.entity_id, InventoryItem.company_id == ctx.company_id).first()
+    if mutation.op == "create":
+        if item:
+            return _applied(mutation)
+        item = InventoryItem(
+            id=mutation.entity_id,
+            company_id=ctx.company_id,
+            sku=str(mutation.payload.get("sku", "")),
+            name=str(mutation.payload.get("name", "")),
+            item_type=mutation.payload.get("item_type"),
+            description=mutation.payload.get("description"),
+            category=mutation.payload.get("category"),
+            quantity_stock=mutation.payload.get("quantity_stock", 0),
+            quantity_minimum=mutation.payload.get("quantity_minimum", 0),
+            unit_cost=mutation.payload.get("unit_cost"),
+            unit_price=mutation.payload.get("unit_price"),
+            updated_at=mutation.updated_at,
+        )
+        ctx.db.add(item)
+        return _applied(mutation)
+    if not item:
+        return _rejected(mutation, "Ítem de inventario no encontrado")
+    conflict = _reject_if_stale(item, mutation)
+    if conflict:
+        return conflict
+    if mutation.op in ("update", "stock_change"):
+        allowed = ("name", "description", "category", "quantity_stock", "quantity_minimum", "unit_cost", "unit_price")
+        for key in allowed:
+            if key in mutation.payload:
+                setattr(item, key, mutation.payload[key])
+    elif mutation.op == "delete":
+        ctx.db.delete(item)
+    else:
+        return _rejected(mutation, "Operación no soportada para inventory_item")
+    item.updated_at = mutation.updated_at
+    ctx.db.add(item)
+    return _applied(mutation)
+
+
+def _apply_service_contract(ctx: SyncContext, mutation: AdminMutation) -> AdminPushItemResult:
+    contract = ctx.db.query(ServiceContract).filter(ServiceContract.id == mutation.entity_id, ServiceContract.company_id == ctx.company_id).first()
+    if mutation.op == "create":
+        if contract:
+            return _applied(mutation)
+        from app.core.enums import ContractKind
+        contract = ServiceContract(
+            id=mutation.entity_id,
+            company_id=ctx.company_id,
+            customer_id=UUID(str(mutation.payload["customer_id"])),
+            contract_number=str(mutation.payload.get("contract_number", "")),
+            name=str(mutation.payload.get("name", "")),
+            contract_kind=ContractKind(mutation.payload.get("contract_kind", "custom")),
+            updated_at=mutation.updated_at,
+        )
+        ctx.db.add(contract)
+        return _applied(mutation)
+    if not contract:
+        return _rejected(mutation, "Contrato no encontrado")
+    conflict = _reject_if_stale(contract, mutation)
+    if conflict:
+        return conflict
+    if mutation.op == "update":
+        for key in ("name", "is_active", "notes"):
+            if key in mutation.payload:
+                setattr(contract, key, mutation.payload[key])
+    elif mutation.op == "delete":
+        contract.is_active = False
+    else:
+        return _rejected(mutation, "Operación no soportada para service_contract")
+    contract.updated_at = mutation.updated_at
+    ctx.db.add(contract)
+    return _applied(mutation)
+
+
 def _applied(mutation: AdminMutation) -> AdminPushItemResult:
     return AdminPushItemResult(
         mutation_id=mutation.mutation_id,
@@ -637,6 +865,16 @@ def push_admin(
             result = _rejected(mutation, "Use la API REST para gestionar permisos temporales")
         elif mutation.entity == "audit_log":
             result = _rejected(mutation, "Los registros de auditoria son solo lectura")
+        elif mutation.entity == "customer":
+            result = _apply_customer(ctx, mutation)
+        elif mutation.entity == "equipment":
+            result = _apply_equipment(ctx, mutation)
+        elif mutation.entity == "service_order":
+            result = _apply_service_order(ctx, mutation)
+        elif mutation.entity == "inventory_item":
+            result = _apply_inventory_item(ctx, mutation)
+        elif mutation.entity == "service_contract":
+            result = _apply_service_contract(ctx, mutation)
         else:
             result = _rejected(mutation, "Entidad no soportada")
         results.append(result)
