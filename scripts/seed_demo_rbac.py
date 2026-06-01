@@ -71,14 +71,20 @@ def ensure_demo_sites_primary(
     *,
     admin: User,
     recep: User,
+    recep2: User,
     tech1: User,
     tech2: User,
+    tech3: User,
+    tech4: User,
+    tech5: User,
     viewer: User,
     inactive: User,
-) -> tuple[Site, Site]:
+) -> tuple[Site, Site, Site]:
     """
-    Dos sedes: Principal + Sede Norte.
-    Admin corporativo (site_id NULL). Jorge (tech2) en ambas sedes para probar X-Site-Id.
+    Tres sedes: Principal, Sede Norte y Sede Sur.
+    Admin corporativo (site_id NULL). Jorge (tech2) en Principal + Norte.
+    Camila (tech3) en Norte, Andrés (tech4) y Felipe (tech5) en Sur.
+    Sofía (recep2) en Norte.
     """
     principal = _get_or_create_site(
         session,
@@ -90,12 +96,19 @@ def ensure_demo_sites_primary(
         session,
         company.id,
         name="Sede Norte",
-        location="Zona norte — demo multi-sede (mismo taller)",
+        location="Calle 170 # 15-40, Bogotá — Zona norte",
+    )
+    sur = _get_or_create_site(
+        session,
+        company.id,
+        name="Sede Sur",
+        location="Autopista Sur # 40-25, Bogotá — Zona industrial sur",
     )
 
     _clear_company_site_roles(session, company.id)
     session.flush()
 
+    # Admin corporativo — sin sede (scope de empresa completo)
     session.add(
         UserSiteRole(
             user_id=admin.id,
@@ -105,6 +118,8 @@ def ensure_demo_sites_primary(
             is_active=True,
         )
     )
+
+    # Sede Principal: recep1, tech1, viewer
     for u, role in (
         (recep, UserRole.RECEPTION),
         (tech1, UserRole.TECHNICIAN),
@@ -119,6 +134,8 @@ def ensure_demo_sites_primary(
                 is_active=True,
             )
         )
+
+    # tech2: Principal + Norte (técnico multi-sede)
     session.add_all(
         [
             UserSiteRole(
@@ -135,17 +152,62 @@ def ensure_demo_sites_primary(
                 role=UserRole.TECHNICIAN,
                 is_active=True,
             ),
+        ]
+    )
+
+    # Sede Norte: recep2, tech3
+    session.add_all(
+        [
             UserSiteRole(
-                user_id=inactive.id,
+                user_id=recep2.id,
                 company_id=company.id,
-                site_id=principal.id,
-                role=UserRole.VIEWER,
-                is_active=False,
+                site_id=norte.id,
+                role=UserRole.RECEPTION,
+                is_active=True,
+            ),
+            UserSiteRole(
+                user_id=tech3.id,
+                company_id=company.id,
+                site_id=norte.id,
+                role=UserRole.TECHNICIAN,
+                is_active=True,
             ),
         ]
     )
+
+    # Sede Sur: tech4, tech5
+    session.add_all(
+        [
+            UserSiteRole(
+                user_id=tech4.id,
+                company_id=company.id,
+                site_id=sur.id,
+                role=UserRole.TECHNICIAN,
+                is_active=True,
+            ),
+            UserSiteRole(
+                user_id=tech5.id,
+                company_id=company.id,
+                site_id=sur.id,
+                role=UserRole.TECHNICIAN,
+                is_active=True,
+            ),
+        ]
+    )
+
+    # Usuario inactivo — Principal (inactivo)
+    session.add(
+        UserSiteRole(
+            user_id=inactive.id,
+            company_id=company.id,
+            site_id=principal.id,
+            role=UserRole.VIEWER,
+            is_active=False,
+        )
+    )
+
     session.flush()
-    return principal, norte
+    return principal, norte, sur
 
 
 def ensure_demo_sites_secondary(
