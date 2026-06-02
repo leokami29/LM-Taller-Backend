@@ -11,6 +11,7 @@ from app.core.enums import OrderDocumentFormat, OrderDocumentType, OrderStatus, 
 from app.db.models.pdf_document import PDFDocument
 from app.db.models.service_order import ServiceOrder
 from app.db.models.user import User
+from app.core.tracking_code import ensure_order_tracking_code
 from app.services.order_document_service import generate_document_pdf
 from app.services.order_document_storage import (
     order_document_relative_path,
@@ -30,6 +31,7 @@ def load_order_for_documents(db: Session, *, company_id: UUID, order_id: UUID) -
             joinedload(ServiceOrder.current_customer),
             joinedload(ServiceOrder.equipment),
             joinedload(ServiceOrder.received_by),
+            joinedload(ServiceOrder.assigned_technician),
             joinedload(ServiceOrder.cost_lines),
             joinedload(ServiceOrder.timeline_entries),
         )
@@ -73,6 +75,8 @@ def create_order_document(
     )
     revision = existing_count + 1
     is_copy = existing_count > 0
+
+    ensure_order_tracking_code(db, order)
 
     pdf_bytes = generate_document_pdf(
         order,

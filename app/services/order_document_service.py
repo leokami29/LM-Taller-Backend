@@ -153,6 +153,22 @@ def _equipment_rows(order: ServiceOrder) -> list[list[str]]:
     return rows
 
 
+def _barcode_flowable(tracking: str, *, width: float, height: float) -> Image | None:
+    try:
+        return Image(BytesIO(render_barcode_image(tracking)), width=width, height=height)
+    except Exception:
+        logger.exception("No se pudo generar código de barras para %s", tracking)
+        return None
+
+
+def _qr_flowable(tracking: str, *, size: float) -> Image | None:
+    try:
+        return Image(BytesIO(render_qr_image(tracking)), width=size, height=size)
+    except Exception:
+        logger.exception("No se pudo generar QR para %s", tracking)
+        return None
+
+
 def _accessories_text(order: ServiceOrder) -> str | None:
     acc: dict | None = getattr(order, "accessories_json", None)
     if not acc:
@@ -277,11 +293,12 @@ def _build_pdf(
         elements.append(Paragraph(f"<b>{title}</b>", title_s))
         elements.append(Paragraph(f"Orden: <b>{order.order_number}</b>", normal_s))
         if tracking:
-            try:
-                bc_bytes = render_barcode_image(tracking)
-                elements.append(Image(ImageReader(BytesIO(bc_bytes)), width=val_w * 0.95, height=10 * mm))
-            except Exception:
-                pass
+            bc_img = _barcode_flowable(tracking, width=val_w * 0.95, height=10 * mm)
+            if bc_img:
+                elements.append(bc_img)
+            qr_img = _qr_flowable(tracking, size=18 * mm)
+            if qr_img:
+                elements.append(qr_img)
             elements.append(Paragraph(tracking, label_s))
     else:
         # A4: 3 columnas: logo | empresa | orden+barcode
@@ -305,31 +322,12 @@ def _build_pdf(
             order_text += f"<br/><font color='red' size='8'>COPIA #{revision}</font>"
         order_para = Paragraph(order_text, normal_s)
 
-        right_content = [order_para]
-        if tracking:
-            try:
-                bc_bytes = render_barcode_image(tracking)
-                bc_img = Image(ImageReader(BytesIO(bc_bytes)), width=55 * mm, height=10 * mm)
-                right_content.append(bc_img)
-            except Exception:
-                pass
-            try:
-                qr_bytes = render_qr_image(tracking)
-                qr_img = Image(ImageReader(BytesIO(qr_bytes)), width=20 * mm, height=20 * mm)
-                right_content.append(qr_img)
-            except Exception:
-                pass
-            right_content.append(Paragraph(f"<font size='8'>{tracking}</font>", label_s))
-
         total_w = A4[0] - lm - rm
         logo_col_w = 32 * mm
         company_col_w = total_w * 0.45
         order_col_w = total_w - logo_col_w - company_col_w
 
-        from reportlab.platypus import KeepInFrame
-        right_frame = KeepInFrame(order_col_w, 36 * mm, right_content)
-
-        header_data = [[logo_cell, company_para, right_frame]]
+        header_data = [[logo_cell, company_para, order_para]]
         header_table = Table(header_data, colWidths=[logo_col_w, company_col_w, order_col_w])
         header_table.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -339,6 +337,38 @@ def _build_pdf(
             ("BACKGROUND", (0, 0), (-1, -1), HEADER_BG),
         ]))
         elements.append(header_table)
+
+        if tracking:
+            bc_img = _barcode_flowable(tracking, width=total_w * 0.68, height=12 * mm)
+            qr_img = _qr_flowable(tracking, size=24 * mm)
+            scan_cells: list = []
+            if bc_img:
+                scan_cells.append(bc_img)
+            if qr_img:
+                scan_cells.append(qr_img)
+            if scan_cells:
+                elements.append(Spacer(1, 2 * mm))
+                if len(scan_cells) == 2:
+                    scan_table = Table(
+                        [scan_cells],
+                        colWidths=[total_w * 0.72, total_w * 0.28],
+                    )
+                    scan_table.setStyle(TableStyle([
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ("ALIGN", (0, 0), (0, 0), "CENTER"),
+                        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ]))
+                    elements.append(scan_table)
+                else:
+                    elements.append(scan_cells[0])
+                elements.append(
+                    Paragraph(
+                        f"<para align='center'><font size='9'><b>{tracking}</b></font></para>",
+                        label_s,
+                    )
+                )
 
     elements.append(Spacer(1, 3 * mm))
 
