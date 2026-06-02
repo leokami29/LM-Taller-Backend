@@ -28,30 +28,28 @@ def _apply(url: str) -> None:
     connect_args = {"connect_timeout": 15}
     eng = create_engine(url, connect_args=connect_args, pool_timeout=20)
     with eng.begin() as conn:
+        # Forzar timeout de lock a 15 s para no colgarse esperando bloqueos
+        conn.execute(text("SET LOCAL lock_timeout = '15s'"))
+        conn.execute(text("SET LOCAL statement_timeout = '30s'"))
+
         rows = conn.execute(text("SELECT version_num FROM alembic_version")).fetchall()
-        print("alembic_version:", [r[0] for r in rows])
+        print("alembic_version:", [r[0] for r in rows], flush=True)
 
         added = []
-        if not _has_column(eng, "sites", "phone"):
-            conn.execute(text("ALTER TABLE sites ADD COLUMN phone VARCHAR(30)"))
-            added.append("sites.phone")
-        if not _has_column(eng, "sites", "email"):
-            conn.execute(text("ALTER TABLE sites ADD COLUMN email VARCHAR(255)"))
-            added.append("sites.email")
-        if not _has_column(eng, "sites", "address_override"):
-            conn.execute(text("ALTER TABLE sites ADD COLUMN address_override TEXT"))
-            added.append("sites.address_override")
-        if not _has_column(eng, "service_orders", "accessories_json"):
-            conn.execute(text("ALTER TABLE service_orders ADD COLUMN accessories_json JSONB"))
-            added.append("service_orders.accessories_json")
-        if not _has_column(eng, "pdf_documents", "revision"):
-            conn.execute(text("ALTER TABLE pdf_documents ADD COLUMN revision INTEGER NOT NULL DEFAULT 1"))
-            conn.execute(text("ALTER TABLE pdf_documents ALTER COLUMN revision DROP DEFAULT"))
-            added.append("pdf_documents.revision")
-        if not _has_column(eng, "pdf_documents", "is_copy"):
-            conn.execute(text("ALTER TABLE pdf_documents ADD COLUMN is_copy BOOLEAN NOT NULL DEFAULT FALSE"))
-            conn.execute(text("ALTER TABLE pdf_documents ALTER COLUMN is_copy DROP DEFAULT"))
-            added.append("pdf_documents.is_copy")
+        for table, col, ddl in [
+            ("sites", "phone", "ALTER TABLE sites ADD COLUMN IF NOT EXISTS phone VARCHAR(30)"),
+            ("sites", "email", "ALTER TABLE sites ADD COLUMN IF NOT EXISTS email VARCHAR(255)"),
+            ("sites", "address_override", "ALTER TABLE sites ADD COLUMN IF NOT EXISTS address_override TEXT"),
+            ("service_orders", "accessories_json", "ALTER TABLE service_orders ADD COLUMN IF NOT EXISTS accessories_json JSONB"),
+            ("pdf_documents", "revision",
+             "ALTER TABLE pdf_documents ADD COLUMN IF NOT EXISTS revision INTEGER NOT NULL DEFAULT 1"),
+            ("pdf_documents", "is_copy",
+             "ALTER TABLE pdf_documents ADD COLUMN IF NOT EXISTS is_copy BOOLEAN NOT NULL DEFAULT FALSE"),
+        ]:
+            if not _has_column(eng, table, col):
+                conn.execute(text(ddl))
+                added.append(f"{table}.{col}")
+                print(f"  + {table}.{col}", flush=True)
 
         conn.execute(text("DELETE FROM alembic_version"))
         conn.execute(text("INSERT INTO alembic_version (version_num) VALUES ('019')"))
