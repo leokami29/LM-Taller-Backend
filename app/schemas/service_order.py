@@ -25,6 +25,7 @@ class ServiceOrderCreate(BaseModel):
     service_contract_id: Optional[UUID] = None
     parent_order_id: Optional[UUID] = None
     portal_submitted_json: Optional[dict[str, Any]] = None
+    accessories_json: Optional[dict[str, Any]] = None
     site_id: UUID
     received_at: Optional[datetime] = None
     received_by_id: Optional[UUID] = None
@@ -112,6 +113,7 @@ class ServiceOrderResponse(BaseModel):
     id: UUID
     company_id: UUID
     order_number: str
+    tracking_code: Optional[str] = None
     order_kind: ServiceOrderKind
     equipment_id: UUID
     current_customer_id: UUID
@@ -138,6 +140,7 @@ class ServiceOrderResponse(BaseModel):
     service_contract_id: Optional[UUID] = None
     parent_order_id: Optional[UUID] = None
     portal_submitted_json: Optional[dict[str, Any]] = None
+    accessories_json: Optional[dict[str, Any]] = None
     images: list[ServiceOrderImageResponse] = []
 
 

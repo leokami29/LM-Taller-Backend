@@ -20,7 +20,23 @@ class CompanyUpdate(BaseModel):
     email: Optional[EmailStr] = None
     country: Optional[str] = None
     currency: Optional[str] = None
+    logo_url: Optional[str] = Field(None, max_length=4096)
 
+
+class CompanyLogoUpdate(BaseModel):
+    logo_url: Optional[str] = Field(None, max_length=4096)
+    logo_base64: Optional[str] = None
+    mime_type: Optional[str] = Field(None, pattern=r"^image/(png|jpeg|jpg|gif|webp|svg\+xml)$")
+
+
+class CompanyEmailSettings(BaseModel):
+    smtp_host: Optional[str] = None
+    smtp_port: int = 587
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_from_name: Optional[str] = None
+    smtp_from_email: Optional[str] = None
+    smtp_use_tls: bool = True
 
 
 class CompanyResponse(BaseModel):
@@ -32,6 +48,7 @@ class CompanyResponse(BaseModel):
     address: str
     phone: Optional[str]
     email: Optional[str]
+    logo_url: Optional[str] = None
     country: str
     currency: str
     is_active: bool

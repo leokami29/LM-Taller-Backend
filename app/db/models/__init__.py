@@ -9,6 +9,7 @@ from app.db.models.inventory_category import InventoryCategory
 from app.db.models.pdf_document import PDFDocument
 from app.db.models.platform_user import PlatformUser
 from app.db.models.order_number_sequence import OrderNumberSequence
+from app.db.models.order_tracking_sequence import OrderTrackingSequence
 from app.db.models.service_contract import ServiceContract
 from app.db.models.service_order import ServiceOrder, ServiceOrderCostLine, ServiceOrderTimeline
 from app.db.models.service_order_image import ServiceOrderImage
@@ -29,6 +30,7 @@ __all__ = [
     "CustomerPortalUser",
     "Equipment",
     "OrderNumberSequence",
+    "OrderTrackingSequence",
     "ServiceContract",
     "ServiceOrder",
     "ServiceOrderCostLine",

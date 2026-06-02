@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Index, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -30,9 +30,12 @@ class PDFDocument(Base):
         UUID(as_uuid=True), ForeignKey("service_orders.id"), nullable=True
     )
     document_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    document_format: Mapped[str] = mapped_column(String(16), nullable=False, default="a4")
     file_url: Mapped[str] = mapped_column(String(1024), nullable=False)
     generated_by_id: Mapped[Any | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     generated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    is_copy: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utc_now, onupdate=utc_now
     )

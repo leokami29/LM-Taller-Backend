@@ -33,6 +33,17 @@ class OrderPriority(str, Enum):
     URGENT = "urgent"
 
 
+class OrderDocumentType(str, Enum):
+    WORKSHOP_INTAKE = "workshop_intake"
+    DELIVERY_RECEIPT = "delivery_receipt"
+    WORK_ORDER_SUMMARY = "work_order_summary"
+
+
+class OrderDocumentFormat(str, Enum):
+    A4 = "a4"
+    THERMAL = "thermal"
+
+
 class ServiceOrderKind(str, Enum):
     """Tipo operativo de la orden (define prefijo y serie numérica por sede)."""
 

@@ -11,12 +11,18 @@ class SiteCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     code: Optional[str] = Field(None, min_length=2, max_length=8)
     location: Optional[str] = None
+    phone: Optional[str] = Field(None, max_length=30)
+    email: Optional[str] = Field(None, max_length=255)
+    address_override: Optional[str] = None
 
 
 class SiteUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=120)
     code: Optional[str] = Field(None, min_length=2, max_length=8)
     location: Optional[str] = None
+    phone: Optional[str] = Field(None, max_length=30)
+    email: Optional[str] = Field(None, max_length=255)
+    address_override: Optional[str] = None
     is_active: Optional[bool] = None
 
 
@@ -28,6 +34,9 @@ class SiteResponse(BaseModel):
     code: str
     name: str
     location: Optional[str]
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address_override: Optional[str] = None
     is_active: bool
     created_at: datetime
 

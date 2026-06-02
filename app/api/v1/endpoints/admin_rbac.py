@@ -82,7 +82,15 @@ def create_site(
     code = validate_site_code(payload.code) if payload.code else derive_site_code(payload.name, existing)
     if code in existing:
         raise HTTPException(status_code=400, detail="Ya existe una sede con ese código")
-    site = Site(company_id=ctx.company_id, code=code, name=payload.name, location=payload.location)
+    site = Site(
+        company_id=ctx.company_id,
+        code=code,
+        name=payload.name,
+        location=payload.location,
+        phone=payload.phone,
+        email=payload.email,
+        address_override=payload.address_override,
+    )
     db.add(site)
     db.commit()
     db.refresh(site)
@@ -123,8 +131,10 @@ def update_site(
         if clash:
             raise HTTPException(status_code=400, detail="Ya existe una sede con ese código")
         data["code"] = new_code
+    allowed_site_fields = {"name", "code", "location", "phone", "email", "address_override", "is_active"}
     for k, v in data.items():
-        setattr(site, k, v)
+        if k in allowed_site_fields:
+            setattr(site, k, v)
     db.commit()
     db.refresh(site)
     return site

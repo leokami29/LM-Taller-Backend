@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.dt import utc_now
 from app.core.enums import OrderPriority, OrderStatus, ServiceOrderKind, UserRole
 from app.core.exceptions import InvalidOrderTransitionError
 from app.core.permissions import (
@@ -41,6 +42,11 @@ from app.schemas.service_order import (
     ServiceOrderUpdate,
 )
 from app.services.permission_service import PermissionService
+from app.services.order_document_registry import (
+    auto_generate_delivery_slips,
+    auto_generate_intake_slips,
+    load_order_for_documents,
+)
 from app.services.order_pdf_service import generate_order_pdf
 from app.services.order_service import (
     add_cost_line,
@@ -187,8 +193,15 @@ def create_order(
             order_kind=payload.order_kind,
             service_contract_id=payload.service_contract_id,
             parent_order_id=payload.parent_order_id,
+            accessories_json=payload.accessories_json,
         )
         db.commit()
+        loaded = load_order_for_documents(
+            db, company_id=current_user.company_id, order_id=order.id
+        )
+        if loaded:
+            auto_generate_intake_slips(db, order=loaded, user=current_user)
+            db.commit()
         db.refresh(order)
         return order
     except ValueError as e:
@@ -472,6 +485,14 @@ def patch_order_status(
             notes=payload.notes,
             time_spent_seconds=payload.time_spent_seconds,
         )
+        if payload.status == OrderStatus.DELIVERED:
+            if not order.actual_completion:
+                order.actual_completion = utc_now()
+            loaded = load_order_for_documents(
+                db, company_id=user.company_id, order_id=order.id
+            )
+            if loaded:
+                auto_generate_delivery_slips(db, order=loaded, user=user)
         db.commit()
         db.refresh(order)
         return order

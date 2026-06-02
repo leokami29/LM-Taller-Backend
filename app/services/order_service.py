@@ -15,6 +15,7 @@ from app.core.enums import (
 )
 from app.core.exceptions import InvalidOrderTransitionError
 from app.core.order_number import format_order_number, parse_order_number
+from app.core.tracking_code import allocate_tracking_code
 from app.db.models.company import Company
 from app.db.models.customer import Customer
 from app.db.models.equipment import Equipment
@@ -289,6 +290,7 @@ def create_service_order(
     service_contract_id: Optional[UUID] = None,
     parent_order_id: Optional[UUID] = None,
     portal_submitted_json: Optional[dict] = None,
+    accessories_json: Optional[dict] = None,
 ) -> ServiceOrder:
     if not site_id:
         raise ValueError("La sede es obligatoria para numerar la orden")
@@ -358,10 +360,12 @@ def create_service_order(
     order_number = allocate_order_number(
         db, company_id=company_id, site=site, order_kind=order_kind
     )
+    tracking_code = allocate_tracking_code(db, company_id=company_id)
 
     order = ServiceOrder(
         company_id=company_id,
         order_number=order_number,
+        tracking_code=tracking_code,
         order_kind=order_kind,
         equipment_id=equipment_id,
         current_customer_id=current_customer_id,
@@ -384,6 +388,7 @@ def create_service_order(
         service_contract_id=service_contract_id,
         parent_order_id=parent_order_id,
         portal_submitted_json=portal_submitted_json,
+        accessories_json=accessories_json,
     )
     db.add(order)
     db.flush()

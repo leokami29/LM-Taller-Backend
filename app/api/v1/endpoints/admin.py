@@ -13,7 +13,7 @@ from app.db.models.user import User
 from app.db.models.company import Company
 from app.db.session import get_db
 from app.schemas.user import UserAdminCreate, UserPasswordUpdate, UserResponse, UserUpdate
-from app.schemas.company import CompanyResponse, CompanyUpdate
+from app.schemas.company import CompanyEmailSettings, CompanyLogoUpdate, CompanyResponse, CompanyUpdate
 from app.services.tenant_config_events import TenantConfigReason, bump_company_config_revision, notify_company_config_changed
 from app.services.permission_service import PermissionService
 from app.utils.helpers import apply_allowed_updates
@@ -210,7 +210,7 @@ def update_own_company(
     if not data:
         return company
 
-    apply_allowed_updates(company, data, ("name", "address", "phone", "email", "country", "currency"))
+    apply_allowed_updates(company, data, ("name", "address", "phone", "email", "country", "currency", "logo_url"))
         
     revision = bump_company_config_revision(company)
     db.add(company)
@@ -239,3 +239,68 @@ def get_own_company(
     if not company:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
     return company
+
+
+@router.patch("/company/logo", response_model=CompanyResponse)
+def update_company_logo(
+    payload: CompanyLogoUpdate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(RequirePermission(ADMIN_USERS)),
+    ctx: PermissionContext = Depends(get_permission_context),
+) -> Company:
+    company = db.query(Company).filter(Company.id == admin.company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    if payload.logo_base64 and payload.mime_type:
+        data_uri = f"data:{payload.mime_type};base64,{payload.logo_base64}"
+        company.logo_url = data_uri
+    elif payload.logo_url is not None:
+        company.logo_url = payload.logo_url
+    else:
+        raise HTTPException(status_code=400, detail="Debe proveer logo_url o logo_base64+mime_type")
+    revision = bump_company_config_revision(company)
+    db.add(company)
+    db.commit()
+    notify_company_config_changed(company.id, TenantConfigReason.COMPANY_STATUS, revision)
+    db.refresh(company)
+    return company
+
+
+@router.get("/company/email-settings", response_model=CompanyEmailSettings)
+def get_company_email_settings(
+    db: Session = Depends(get_db),
+    admin: User = Depends(RequirePermission(ADMIN_USERS)),
+) -> CompanyEmailSettings:
+    company = db.query(Company).filter(Company.id == admin.company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    raw = (company.settings_json or {}).get("email_settings", {})
+    return CompanyEmailSettings(**raw)
+
+
+@router.patch("/company/email-settings", response_model=CompanyEmailSettings)
+def update_company_email_settings(
+    payload: CompanyEmailSettings,
+    db: Session = Depends(get_db),
+    admin: User = Depends(RequirePermission(ADMIN_USERS)),
+    ctx: PermissionContext = Depends(get_permission_context),
+) -> CompanyEmailSettings:
+    company = db.query(Company).filter(Company.id == admin.company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    settings = dict(company.settings_json or {})
+    settings["email_settings"] = payload.model_dump(exclude_none=True)
+    company.settings_json = settings
+    db.add(company)
+    db.commit()
+    PermissionService(db).log_action(
+        user_id=ctx.user_id,
+        company_id=ctx.company_id,
+        action="updated_email_settings",
+        resource="company",
+        resource_id=company.id,
+        request=None,
+        site_id=ctx.site_id,
+        changes={"smtp_host": payload.smtp_host},
+    )
+    return payload

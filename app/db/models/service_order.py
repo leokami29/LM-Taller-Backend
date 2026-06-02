@@ -39,6 +39,7 @@ class ServiceOrder(Base):
     id: Mapped[Any] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     company_id: Mapped[Any] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
     order_number: Mapped[str] = mapped_column(String(32), nullable=False)
+    tracking_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
     order_kind: Mapped[ServiceOrderKind] = mapped_column(
         SAEnum(ServiceOrderKind, values_callable=lambda x: [e.value for e in x], native_enum=False),
         default=ServiceOrderKind.WORKSHOP_INTAKE,
@@ -81,6 +82,7 @@ class ServiceOrder(Base):
         UUID(as_uuid=True), ForeignKey("service_orders.id")
     )
     portal_submitted_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    accessories_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
     company: Mapped["Company"] = relationship("Company", back_populates="service_orders")
     service_contract: Mapped["ServiceContract | None"] = relationship(
