@@ -17,6 +17,7 @@ from app.api.v1.endpoints import (
     service_contracts,
     portal_users,
     portal,
+    public_tracking,
     license,
     sync_admin,
     tenant_events,
@@ -38,6 +39,7 @@ router.include_router(order_email.router)
 router.include_router(service_contracts.router)
 router.include_router(portal_users.router)
 router.include_router(portal.router)
+router.include_router(public_tracking.router)
 router.include_router(inventory.router)
 router.include_router(inventory_categories.router)
 router.include_router(analytics.router)

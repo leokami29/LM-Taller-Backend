@@ -51,3 +51,7 @@ def login_rate_limiter() -> RateLimiter:
 
 def strict_login_rate_limiter() -> RateLimiter:
     return RateLimiter(max_requests=5, window_seconds=60)
+
+
+def public_tracking_rate_limiter() -> RateLimiter:
+    return RateLimiter(max_requests=60, window_seconds=60)

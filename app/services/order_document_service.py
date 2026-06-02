@@ -18,8 +18,8 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
-from reportlab.pdfbase.pdfmetrics import stringWidth
-from reportlab.pdfgen import canvas as rl_canvas
+from reportlab.graphics.barcode import code128 as rl_code128
+from reportlab.graphics.shapes import Drawing
 from reportlab.platypus import (
     Image,
     Paragraph,
@@ -30,7 +30,7 @@ from reportlab.platypus import (
 )
 
 from app.core.enums import OrderDocumentFormat, OrderDocumentType
-from app.services.order_pdf_service import generate_order_pdf
+from app.services.tracking_urls import build_public_tracking_url
 
 if TYPE_CHECKING:
     from app.db.models.service_order import ServiceOrder
@@ -53,9 +53,33 @@ BORDER_GREY = colors.HexColor("#cccccc")
 def render_barcode_image(tracking_code: str) -> bytes:
     code = barcode.get("code128", tracking_code, writer=ImageWriter())
     buf = BytesIO()
-    code.write(buf, options={"module_height": 8, "font_size": 8, "text_distance": 2})
+    code.write(
+        buf,
+        options={
+            "module_height": 14,
+            "module_width": 0.35,
+            "quiet_zone": 4,
+            "font_size": 10,
+            "text_distance": 3,
+            "write_text": True,
+        },
+    )
     buf.seek(0)
     return buf.getvalue()
+
+
+def _normalize_tracking(tracking: str | None) -> str:
+    return (tracking or "").upper().strip()
+
+
+def _barcode_drawing(tracking: str, *, width: float, height: float) -> Drawing:
+    bar_height = height * 0.72
+    bc = rl_code128.Code128(tracking, barHeight=bar_height, barWidth=0.28)
+    d = Drawing(width, height)
+    bc.x = max(0, (width - bc.width) / 2)
+    bc.y = 2
+    d.add(bc)
+    return d
 
 
 def render_qr_image(data: str, size_px: int = 120) -> bytes:
@@ -153,7 +177,11 @@ def _equipment_rows(order: ServiceOrder) -> list[list[str]]:
     return rows
 
 
-def _barcode_flowable(tracking: str, *, width: float, height: float) -> Image | None:
+def _barcode_flowable(tracking: str, *, width: float, height: float) -> Drawing | Image | None:
+    try:
+        return _barcode_drawing(tracking, width=width, height=height)
+    except Exception:
+        logger.warning("Barcode vectorial falló para %s, usando PNG", tracking, exc_info=True)
     try:
         return Image(BytesIO(render_barcode_image(tracking)), width=width, height=height)
     except Exception:
@@ -161,12 +189,71 @@ def _barcode_flowable(tracking: str, *, width: float, height: float) -> Image | 
         return None
 
 
-def _qr_flowable(tracking: str, *, size: float) -> Image | None:
+def _qr_flowable(qr_data: str, *, size: float) -> Image | None:
     try:
-        return Image(BytesIO(render_qr_image(tracking)), width=size, height=size)
+        return Image(BytesIO(render_qr_image(qr_data)), width=size, height=size)
     except Exception:
-        logger.exception("No se pudo generar QR para %s", tracking)
+        logger.exception("No se pudo generar QR para %s", qr_data[:80])
         return None
+
+
+def _append_scan_block(
+    elements: list,
+    *,
+    tracking: str,
+    qr_url: str | None,
+    format: DocumentFormat,
+    label_s: ParagraphStyle,
+    total_w: float,
+    val_w: float,
+) -> None:
+    if not tracking:
+        return
+    if format == OrderDocumentFormat.THERMAL.value:
+        bc = _barcode_flowable(tracking, width=val_w * 0.95, height=11 * mm)
+        if bc:
+            elements.append(bc)
+        if qr_url:
+            qr = _qr_flowable(qr_url, size=18 * mm)
+            if qr:
+                elements.append(qr)
+        elements.append(
+            Paragraph(f"<para align='center'><font size='8'><b>{tracking}</b></font></para>", label_s)
+        )
+        return
+
+    bc_img = _barcode_flowable(tracking, width=total_w * 0.68, height=13 * mm)
+    qr_img = _qr_flowable(qr_url, size=24 * mm) if qr_url else None
+    scan_cells: list = []
+    if bc_img:
+        scan_cells.append(bc_img)
+    if qr_img:
+        scan_cells.append(qr_img)
+    if not scan_cells:
+        return
+    elements.append(Spacer(1, 2 * mm))
+    if len(scan_cells) == 2:
+        scan_table = Table([scan_cells], colWidths=[total_w * 0.72, total_w * 0.28])
+        scan_table.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("ALIGN", (0, 0), (0, 0), "CENTER"),
+                    ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ]
+            )
+        )
+        elements.append(scan_table)
+    else:
+        elements.append(scan_cells[0])
+    elements.append(
+        Paragraph(
+            f"<para align='center'><font size='9'><b>{tracking}</b></font></para>",
+            label_s,
+        )
+    )
 
 
 def _accessories_text(order: ServiceOrder) -> str | None:
@@ -237,6 +324,7 @@ def _build_pdf(
     format: DocumentFormat,
     include_signatures: bool,
     revision: int = 1,
+    tenant_slug: str = "default",
 ) -> bytes:
     buffer = BytesIO()
     if format == OrderDocumentFormat.THERMAL.value:
@@ -273,7 +361,16 @@ def _build_pdf(
     # ── Header ─────────────────────────────────────────────────────────────────
     info = _company_info(order)
     logo_reader = _load_logo(order.company)
-    tracking = order.tracking_code or ""
+    tracking = _normalize_tracking(order.tracking_code)
+    qr_url = (
+        build_public_tracking_url(
+            tenant_slug=tenant_slug,
+            tracking_code=tracking,
+            company=order.company,
+        )
+        if tracking
+        else None
+    )
 
     if format == OrderDocumentFormat.THERMAL.value:
         # Térmico: centrado
@@ -292,14 +389,15 @@ def _build_pdf(
         elements.append(Spacer(1, 2 * mm))
         elements.append(Paragraph(f"<b>{title}</b>", title_s))
         elements.append(Paragraph(f"Orden: <b>{order.order_number}</b>", normal_s))
-        if tracking:
-            bc_img = _barcode_flowable(tracking, width=val_w * 0.95, height=10 * mm)
-            if bc_img:
-                elements.append(bc_img)
-            qr_img = _qr_flowable(tracking, size=18 * mm)
-            if qr_img:
-                elements.append(qr_img)
-            elements.append(Paragraph(tracking, label_s))
+        _append_scan_block(
+            elements,
+            tracking=tracking,
+            qr_url=qr_url,
+            format=format,
+            label_s=label_s,
+            total_w=THERMAL_WIDTH - lm - rm,
+            val_w=val_w,
+        )
     else:
         # A4: 3 columnas: logo | empresa | orden+barcode
         logo_cell = ""
@@ -338,37 +436,15 @@ def _build_pdf(
         ]))
         elements.append(header_table)
 
-        if tracking:
-            bc_img = _barcode_flowable(tracking, width=total_w * 0.68, height=12 * mm)
-            qr_img = _qr_flowable(tracking, size=24 * mm)
-            scan_cells: list = []
-            if bc_img:
-                scan_cells.append(bc_img)
-            if qr_img:
-                scan_cells.append(qr_img)
-            if scan_cells:
-                elements.append(Spacer(1, 2 * mm))
-                if len(scan_cells) == 2:
-                    scan_table = Table(
-                        [scan_cells],
-                        colWidths=[total_w * 0.72, total_w * 0.28],
-                    )
-                    scan_table.setStyle(TableStyle([
-                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                        ("ALIGN", (0, 0), (0, 0), "CENTER"),
-                        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-                        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                    ]))
-                    elements.append(scan_table)
-                else:
-                    elements.append(scan_cells[0])
-                elements.append(
-                    Paragraph(
-                        f"<para align='center'><font size='9'><b>{tracking}</b></font></para>",
-                        label_s,
-                    )
-                )
+        _append_scan_block(
+            elements,
+            tracking=tracking,
+            qr_url=qr_url,
+            format=format,
+            label_s=label_s,
+            total_w=total_w,
+            val_w=val_w,
+        )
 
     elements.append(Spacer(1, 3 * mm))
 
@@ -469,7 +545,13 @@ def _build_pdf(
 
 # ─── Public API ──────────────────────────────────────────────────────────────
 
-def generate_intake_slip(order: ServiceOrder, format: DocumentFormat = "a4", revision: int = 1) -> bytes:
+def generate_intake_slip(
+    order: ServiceOrder,
+    format: DocumentFormat = "a4",
+    revision: int = 1,
+    *,
+    tenant_slug: str = "default",
+) -> bytes:
     return _build_pdf(
         order,
         title="Comprobante de ingreso",
@@ -478,10 +560,17 @@ def generate_intake_slip(order: ServiceOrder, format: DocumentFormat = "a4", rev
         format=format,
         include_signatures=True,
         revision=revision,
+        tenant_slug=tenant_slug,
     )
 
 
-def generate_delivery_slip(order: ServiceOrder, format: DocumentFormat = "a4", revision: int = 1) -> bytes:
+def generate_delivery_slip(
+    order: ServiceOrder,
+    format: DocumentFormat = "a4",
+    revision: int = 1,
+    *,
+    tenant_slug: str = "default",
+) -> bytes:
     delivery_dt = order.actual_completion
     if not delivery_dt and order.timeline_entries:
         for entry in sorted(order.timeline_entries, key=lambda e: e.changed_at, reverse=True):
@@ -503,6 +592,32 @@ def generate_delivery_slip(order: ServiceOrder, format: DocumentFormat = "a4", r
         format=format,
         include_signatures=True,
         revision=revision,
+        tenant_slug=tenant_slug,
+    )
+
+
+def generate_work_order_summary(
+    order: ServiceOrder,
+    format: DocumentFormat = "a4",
+    revision: int = 1,
+    *,
+    tenant_slug: str = "default",
+) -> bytes:
+    extra = [
+        ["Estado", order.status.value if order.status else "—"],
+        ["Total", f"${float(order.total_cost):,.2f}"],
+    ]
+    if order.diagnosis_notes:
+        extra.append(["Diagnóstico", order.diagnosis_notes[:200]])
+    return _build_pdf(
+        order,
+        title="Resumen de orden",
+        subtitle="Resumen de servicio",
+        extra_rows=extra,
+        format=format if format != OrderDocumentFormat.THERMAL.value else OrderDocumentFormat.A4.value,
+        include_signatures=False,
+        revision=revision,
+        tenant_slug=tenant_slug,
     )
 
 
@@ -512,13 +627,12 @@ def generate_document_pdf(
     document_type: OrderDocumentType,
     format: DocumentFormat,
     revision: int = 1,
+    tenant_slug: str = "default",
 ) -> bytes:
     if document_type == OrderDocumentType.WORKSHOP_INTAKE:
-        return generate_intake_slip(order, format=format, revision=revision)
+        return generate_intake_slip(order, format=format, revision=revision, tenant_slug=tenant_slug)
     if document_type == OrderDocumentType.DELIVERY_RECEIPT:
-        return generate_delivery_slip(order, format=format, revision=revision)
+        return generate_delivery_slip(order, format=format, revision=revision, tenant_slug=tenant_slug)
     if document_type == OrderDocumentType.WORK_ORDER_SUMMARY:
-        if format == OrderDocumentFormat.THERMAL.value:
-            return generate_intake_slip(order, format=format, revision=revision)
-        return generate_order_pdf(order)
+        return generate_work_order_summary(order, format=format, revision=revision, tenant_slug=tenant_slug)
     raise ValueError(f"Tipo de documento no soportado: {document_type}")

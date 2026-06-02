@@ -13,6 +13,7 @@ from app.db.models.service_order import ServiceOrder
 from app.db.models.user import User
 from app.core.tracking_code import ensure_order_tracking_code
 from app.services.order_document_service import generate_document_pdf
+from app.services.tracking_urls import resolve_tenant_slug_for_company
 from app.services.order_document_storage import (
     order_document_relative_path,
     read_order_pdf,
@@ -77,12 +78,14 @@ def create_order_document(
     is_copy = existing_count > 0
 
     ensure_order_tracking_code(db, order)
+    tenant_slug = resolve_tenant_slug_for_company(order.company_id)
 
     pdf_bytes = generate_document_pdf(
         order,
         document_type=document_type,
         format=document_format.value,
         revision=revision,
+        tenant_slug=tenant_slug,
     )
     rel_path = order_document_relative_path(
         company_id=order.company_id,

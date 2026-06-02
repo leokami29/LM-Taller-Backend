@@ -67,6 +67,12 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: Optional[str] = None
     SMTP_FROM_EMAIL: str = "noreply@sgtaller.com"
 
+    # Base del frontend para URLs en QR de comprobantes (debe ser accesible desde el celular del cliente).
+    PUBLIC_APP_URL: str = Field(
+        default="http://localhost:3000",
+        validation_alias="PUBLIC_APP_URL",
+    )
+
     @computed_field
     @property
     def tenant_database_url_map(self) -> dict[str, str]:

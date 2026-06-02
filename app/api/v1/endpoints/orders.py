@@ -47,7 +47,9 @@ from app.services.order_document_registry import (
     auto_generate_intake_slips,
     load_order_for_documents,
 )
-from app.services.order_pdf_service import generate_order_pdf
+from app.core.tracking_code import ensure_order_tracking_code
+from app.services.order_document_service import generate_work_order_summary
+from app.services.tracking_urls import resolve_tenant_slug_for_company
 from app.services.order_service import (
     add_cost_line,
     change_order_status,
@@ -587,6 +589,7 @@ def print_order(
     order = (
         db.query(ServiceOrder)
         .options(
+            joinedload(ServiceOrder.company),
             joinedload(ServiceOrder.current_customer),
             joinedload(ServiceOrder.equipment),
             joinedload(ServiceOrder.cost_lines),
@@ -597,7 +600,9 @@ def print_order(
     )
     if not order:
         raise HTTPException(status_code=404, detail="Orden no encontrada")
-    pdf_bytes = generate_order_pdf(order)
+    ensure_order_tracking_code(db, order)
+    tenant_slug = resolve_tenant_slug_for_company(order.company_id)
+    pdf_bytes = generate_work_order_summary(order, tenant_slug=tenant_slug)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

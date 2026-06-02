@@ -6,6 +6,9 @@ from app.db.models.pdf_document import PDFDocument
 from app.db.models.rbac import Site
 from app.db.models.service_order import ServiceOrder
 from app.core.tracking_code import allocate_tracking_code
+from app.core.enums import OrderDocumentType, OrderDocumentFormat
+from app.services.order_document_service import generate_document_pdf, generate_work_order_summary
+from app.services.tracking_urls import build_public_tracking_url, resolve_tenant_slug_for_company
 
 
 def _get_token(client, email="admin@test.com"):
@@ -162,6 +165,30 @@ def test_create_order_assigns_tracking_and_intake_pdfs(client, db_session, seed_
     assert len(docs) >= 2
     types = {d.document_type for d in docs}
     assert "workshop_intake" in types
+
+
+def test_work_order_summary_pdf_has_codes(db_session, seed_company_and_admin):
+    company, _ = seed_company_and_admin
+    order = _seed_order(db_session, company)
+    slug = resolve_tenant_slug_for_company(company.id)
+    pdf = generate_work_order_summary(order, tenant_slug=slug)
+    assert pdf.startswith(b"%PDF")
+    assert len(pdf) > 800
+    url = build_public_tracking_url(tenant_slug=slug, tracking_code=order.tracking_code, company=company)
+    assert "seguimiento" in url
+
+
+def test_generate_document_pdf_summary(db_session, seed_company_and_admin):
+    company, _ = seed_company_and_admin
+    order = _seed_order(db_session, company)
+    slug = resolve_tenant_slug_for_company(company.id)
+    pdf = generate_document_pdf(
+        order,
+        document_type=OrderDocumentType.WORK_ORDER_SUMMARY,
+        format=OrderDocumentFormat.A4.value,
+        tenant_slug=slug,
+    )
+    assert pdf.startswith(b"%PDF")
 
 
 def test_get_order_by_tracking(client, db_session, seed_company_and_admin):
