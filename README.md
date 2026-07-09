@@ -193,9 +193,30 @@ Los módulos/límites efectivos del manifiesto se resuelven desde el **catálogo
 
 ## Estructura
 
-- `app/main.py`: aplicación FastAPI.
-- `app/api/v1/`: routers versionados.
-- `app/db/models/`: modelos SQLAlchemy.
-- `app/schemas/`: modelos Pydantic v2.
-- `app/services/`: reglas de negocio (órdenes, inventario, analítica).
-- `migrations/`: Alembic.
+```
+app/
+├── main.py              # FastAPI, middleware, lifespan
+├── config.py            # Settings (pydantic-settings)
+├── dependencies.py      # Shim → app/api/deps (compatibilidad)
+├── api/
+│   ├── deps/            # Auth tenant, plataforma, portal, permisos
+│   ├── v1/endpoints/    # API taller (/api/v1)
+│   └── platform/v1/     # API plataforma (/api/platform/v1)
+├── core/                # Lógica pura: enums, permisos, reglas de estado
+├── services/            # Negocio con I/O (DB, Redis, PDF, email)
+├── schemas/             # Pydantic v2
+├── db/
+│   ├── models/          # SQLAlchemy tenant
+│   ├── catalog/         # Modelos y sesión del catálogo global
+│   └── session.py       # get_db, tenant routing
+├── tenancy/             # Resolución URL por tenant, engines LRU
+├── middleware/          # Logging, headers, errores
+└── infrastructure/      # Redis y clientes externos
+migrations/              # Alembic tenant
+migrations_catalog/      # Alembic catálogo
+scripts/                 # Ver scripts/README.md
+tests/                   # pytest (paralelo a app/)
+docs/adr/                # Decisiones de arquitectura (ADR-001, ADR-002)
+```
+
+**Flujo de dependencias:** `api` → `services` → `db`; `core` no importa capas superiores. Convenciones detalladas: [docs/adr/ADR-002-module-boundaries.md](docs/adr/ADR-002-module-boundaries.md).

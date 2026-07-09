@@ -7,19 +7,19 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.core.dt import utc_now
 from app.core.entitlements import Entitlements
 from app.core.enums import PlanTier
 from app.core.features import ALL_MODULES
-from app.config import settings
-from app.db.session import catalog_session_scope
-from app.services.plan_catalog_service import desktop_policy_for_plan_code
 from app.core.plan_desktop_policy import desktop_policy_for_plan
 from app.core.subscription_lifecycle import subscription_block_reason, subscription_is_usable
 from app.db.models.company import Company
+from app.db.session import catalog_session_scope
 from app.schemas.license import LicenseManifestPayload, SignedLicenseManifest
 from app.services.license_signing import sign_manifest_payload
 from app.services.permission_service import PermissionService
+from app.services.plan_catalog_service import desktop_policy_for_plan_code
 from app.services.tenant_config_events import read_company_config_revision, read_global_config_revision
 
 

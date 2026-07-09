@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from app.core.permissions import PLATFORM_COMPANIES_READ, PLATFORM_COMPANIES_WRITE
-from app.dependencies import RequirePlatformPermission, require_platform_super_admin
 from app.db.models.platform_user import PlatformUser
+from app.dependencies import RequirePlatformPermission, require_platform_super_admin
 from app.services import platform_config_service as pcfg
 from app.services.tenant_config_events import TenantConfigReason, bump_and_notify_global
 

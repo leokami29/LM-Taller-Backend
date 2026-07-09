@@ -10,12 +10,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from sqlalchemy.orm import Session
 
 from app.core.dt import utc_now
-from app.core.enums import RoleChangeStatus, UserRole
+from app.core.enums import RoleChangeStatus
 from app.core.permissions import ADMIN_USERS
-from app.dependencies import PermissionContext, RequirePermission, get_permission_context
 from app.db.models.rbac import RoleChangeRequest, Site, TemporaryPermission, UserSiteRole
 from app.db.models.user import User
 from app.db.session import get_db
+from app.dependencies import PermissionContext, RequirePermission, get_permission_context
 from app.schemas.rbac import (
     AuditLogResponse,
     RoleChangeRequestCreate,
@@ -25,7 +25,6 @@ from app.schemas.rbac import (
     SiteUpdate,
     TemporaryPermissionGrant,
     TemporaryPermissionResponse,
-    UserSiteRoleInput,
     UserWithRolesResponse,
 )
 from app.services.permission_service import PermissionService

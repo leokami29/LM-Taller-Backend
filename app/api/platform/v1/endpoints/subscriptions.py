@@ -10,28 +10,28 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.core.dt import utc_now
 from app.core.permissions import (
     PLATFORM_BILLING_READ,
     PLATFORM_COMPANIES_READ,
     PLATFORM_COMPANIES_WRITE,
 )
+from app.db.catalog.models import Subscription, TenantRouting
 from app.db.models.company import Company
 from app.db.models.platform_user import PlatformUser
 from app.db.session import catalog_session_scope, get_db, tenant_session_for_company
 from app.dependencies import RequirePlatformPermission
+from app.schemas.license import SignedLicenseManifest
 from app.schemas.subscription import (
     EffectiveEntitlementsSnapshot,
     SubscriptionAssign,
     SubscriptionResponse,
 )
-from app.services.effective_entitlements_service import effective_entitlements_snapshot
-from app.core.dt import utc_now
-from app.schemas.license import SignedLicenseManifest
-from app.services.license_manifest_service import build_license_manifest
 from app.services import plan_catalog_service as pcs
+from app.services.effective_entitlements_service import effective_entitlements_snapshot
+from app.services.license_manifest_service import build_license_manifest
 from app.services.subscription_service import apply_plan_to_company
 from app.services.tenant_config_events import TenantConfigReason, company_patch_meta, post_company_mutation
-from app.db.catalog.models import Subscription, TenantRouting
 
 router = APIRouter(prefix="/companies", tags=["platform-subscriptions"])
 

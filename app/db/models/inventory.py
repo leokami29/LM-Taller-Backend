@@ -4,12 +4,13 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, Enum as SAEnum, ForeignKey, Index, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.enums import InventoryMovementType
 from app.core.dt import utc_now
+from app.core.enums import InventoryMovementType
 from app.db.base import Base
 
 if TYPE_CHECKING:

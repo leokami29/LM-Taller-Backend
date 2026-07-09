@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 
+from app.config import settings
 from app.core.permissions import PLATFORM_COMPANIES_READ, PLATFORM_COMPANIES_WRITE
-from app.db.session import catalog_session_scope
+from app.db.catalog.models import CatalogAuditLog
+from app.db.models.company import Company
+from app.db.models.platform_user import PlatformUser
+from app.db.session import catalog_session_scope, tenant_session_for_company
 from app.dependencies import RequirePlatformPermission
 from app.schemas.license import TenantInstallationResponse
-from app.config import settings
-from app.db.catalog.models import CatalogAuditLog
-from app.db.models.platform_user import PlatformUser
 from app.services.installation_service import list_installations, revoke_installation
 from app.services.permission_service import get_catalog_subscription_period_end
 from app.services.tenant_config_events import (
@@ -20,8 +21,6 @@ from app.services.tenant_config_events import (
     company_patch_meta,
     post_company_mutation,
 )
-from app.db.session import tenant_session_for_company
-from app.db.models.company import Company
 
 router = APIRouter(prefix="/companies", tags=["platform-installations"])
 

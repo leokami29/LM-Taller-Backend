@@ -2,20 +2,23 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.contract_template import validate_submitted_against_template
-from app.core.enums import OrderStatus, PORTAL_ALLOWED_ORDER_KINDS, ServiceOrderKind
+from app.core.enums import PORTAL_ALLOWED_ORDER_KINDS, OrderStatus
 from app.core.exceptions import InvalidOrderTransitionError
-from app.dependencies import PortalContext, get_portal_context
 from app.db.models.equipment import Equipment
 from app.db.models.service_contract import ServiceContract
 from app.db.models.service_order import ServiceOrder, ServiceOrderCostLine, ServiceOrderTimeline
 from app.db.session import get_db
+from app.dependencies import PortalContext, get_portal_context
 from app.schemas.common import PaginatedResponse
 from app.schemas.portal import PortalOrderCreate, PortalOrderResponse
-from app.schemas.service_order import OrderTimelineEntryResponse, ServiceOrderCostLineResponse, ServiceOrderImageResponse
+from app.schemas.service_order import (
+    OrderTimelineEntryResponse,
+    ServiceOrderCostLineResponse,
+)
 from app.services.contract_service import contract_is_active, count_contract_orders_this_month
 from app.services.order_service import change_order_status, create_service_order
 from app.services.permission_service import PermissionService

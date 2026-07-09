@@ -5,12 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.permissions import PORTAL_USERS_READ, PORTAL_USERS_WRITE
-from app.dependencies import RequirePermission, PermissionContext
+from app.core.security import SecurityUtils
 from app.db.models.customer_portal_user import CustomerPortalUser
 from app.db.session import get_db
+from app.dependencies import PermissionContext, RequirePermission
 from app.schemas.portal import PortalUserCreate, PortalUserCreateResponse, PortalUserPatch, PortalUserResponse
 from app.services.portal_auth_service import create_portal_user
-from app.core.security import SecurityUtils
 
 router = APIRouter(prefix="/admin/portal-users", tags=["portal-users"])
 

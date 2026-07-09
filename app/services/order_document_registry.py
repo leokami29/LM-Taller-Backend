@@ -8,17 +8,17 @@ from uuid import UUID
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.enums import OrderDocumentFormat, OrderDocumentType, OrderStatus, is_workshop_order_kind
+from app.core.tracking_code import ensure_order_tracking_code
 from app.db.models.pdf_document import PDFDocument
 from app.db.models.service_order import ServiceOrder
 from app.db.models.user import User
-from app.core.tracking_code import ensure_order_tracking_code
 from app.services.order_document_service import generate_document_pdf
-from app.services.tracking_urls import resolve_tenant_slug_for_company
 from app.services.order_document_storage import (
     order_document_relative_path,
     read_order_pdf,
     save_order_pdf,
 )
+from app.services.tracking_urls import resolve_tenant_slug_for_company
 
 logger = logging.getLogger(__name__)
 

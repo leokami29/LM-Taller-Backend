@@ -16,7 +16,6 @@ from app.core.enums import (
 from app.core.exceptions import InvalidOrderTransitionError
 from app.core.order_number import format_order_number, parse_order_number
 from app.core.tracking_code import allocate_tracking_code
-from app.db.models.company import Company
 from app.db.models.customer import Customer
 from app.db.models.equipment import Equipment
 from app.db.models.order_number_sequence import OrderNumberSequence

@@ -4,16 +4,16 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.platform.v1.endpoints.session_policy import build_policy_document
 from app.core.permissions import ADMIN_USERS
-from app.dependencies import RequirePermission
 from app.db.models.company import Company
 from app.db.models.rbac import Site
 from app.db.models.user import User
 from app.db.session import get_db
+from app.dependencies import RequirePermission
 from app.schemas.session_policy import (
     CompanySessionPolicyUpdate,
     SessionPolicyDocumentResponse,
@@ -28,7 +28,11 @@ from app.services.session_policy_service import (
     set_site_policy,
     set_user_policy,
 )
-from app.services.tenant_config_events import TenantConfigReason, bump_company_config_revision, notify_company_config_changed
+from app.services.tenant_config_events import (
+    TenantConfigReason,
+    bump_company_config_revision,
+    notify_company_config_changed,
+)
 
 router = APIRouter(prefix="/admin/session-policy", tags=["admin-session-policy"])
 

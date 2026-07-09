@@ -1,14 +1,13 @@
-from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.permissions import INVENTORY_READ, INVENTORY_WRITE
-from app.dependencies import RequirePermission, ensure_not_viewer_for_mutation
 from app.db.models.inventory_category import InventoryCategory
 from app.db.models.user import User
 from app.db.session import get_db
+from app.dependencies import RequirePermission, ensure_not_viewer_for_mutation
 from app.schemas.inventory import (
     InventoryCategoryCreate,
     InventoryCategoryResponse,

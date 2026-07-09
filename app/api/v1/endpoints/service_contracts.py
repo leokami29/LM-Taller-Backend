@@ -5,9 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.permissions import CONTRACTS_DELETE, CONTRACTS_READ, CONTRACTS_WRITE
-from app.dependencies import RequirePermission, get_permission_context, PermissionContext
 from app.db.models.service_contract import ServiceContract
 from app.db.session import get_db
+from app.dependencies import PermissionContext, RequirePermission
 from app.schemas.common import PaginatedResponse
 from app.schemas.service_contract import (
     ServiceContractCreate,

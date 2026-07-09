@@ -3,13 +3,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.enums import OrderDocumentType
 from app.core.permissions import ORDERS_READ, ORDERS_WRITE
-from app.dependencies import RequirePermission, ensure_not_viewer_for_mutation
 from app.db.models.pdf_document import PDFDocument
 from app.db.models.service_order import ServiceOrder
 from app.db.models.user import User
 from app.db.session import get_db
+from app.dependencies import RequirePermission, ensure_not_viewer_for_mutation
 from app.schemas.order_document import OrderDocumentGenerate, OrderDocumentResponse
 from app.services.order_document_registry import (
     create_order_document,

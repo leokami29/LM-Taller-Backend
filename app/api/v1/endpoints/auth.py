@@ -6,28 +6,27 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.db.models.company import Company
 from app.db.models.user import User
 from app.db.session import (
     SessionLocal,
     decode_refresh_company_id,
-    get_db,
     tenant_session_for_company,
     tenant_session_for_slug,
 )
 from app.dependencies import get_current_user
+from app.schemas.session_policy import SessionEffectiveSchema
 from app.schemas.tokens import RefreshTokenRequest, TenantTokenPairResponse
 from app.schemas.user import UserResponse
-from app.schemas.session_policy import SessionEffectiveSchema
 from app.services.auth_service import (
     authenticate_user,
     create_tenant_token_pair,
     refresh_tenant_tokens,
 )
+from app.services.rate_limit_service import login_rate_limiter
 from app.services.session_policy_service import ResolvedSession
 from app.services.tenant_config_events import read_company_config_revision, read_global_config_revision
-from app.services.rate_limit_service import login_rate_limiter
 from app.tenancy import TenantResolveError
-from app.db.models.company import Company
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

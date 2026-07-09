@@ -10,10 +10,10 @@ from app.core.permissions import (
     CUSTOMERS_READ,
     CUSTOMERS_WRITE,
 )
-from app.dependencies import RequirePermission, ensure_not_viewer_for_mutation
 from app.db.models.customer import Customer
 from app.db.models.user import User
 from app.db.session import get_db
+from app.dependencies import RequirePermission, ensure_not_viewer_for_mutation
 from app.schemas.common import PaginatedResponse
 from app.schemas.customer import CustomerCreate, CustomerResponse, CustomerUpdate
 

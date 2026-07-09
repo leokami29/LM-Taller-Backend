@@ -5,9 +5,9 @@ from __future__ import annotations
 from app.core.permissions import (
     ADMIN_USERS,
     ANALYTICS_READ,
+    CONTRACTS_DELETE,
     CONTRACTS_READ,
     CONTRACTS_WRITE,
-    CONTRACTS_DELETE,
     CUSTOMERS_DELETE,
     CUSTOMERS_READ,
     CUSTOMERS_WRITE,

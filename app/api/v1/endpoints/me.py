@@ -10,9 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.core.features import MODULE_CORE
 from app.core.subscription_lifecycle import subscription_block_reason, subscription_is_usable
-from app.dependencies import PermissionContext, get_current_user, get_permission_context
 from app.db.models.user import User
 from app.db.session import get_db
+from app.dependencies import get_current_user
 from app.schemas.rbac import (
     EntitlementsLimits,
     EntitlementsPayload,

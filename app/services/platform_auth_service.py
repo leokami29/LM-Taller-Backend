@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core.security import SecurityUtils, TYP_PLATFORM
+from app.core.security import TYP_PLATFORM, SecurityUtils
 from app.db.catalog.models import CatalogPlatformUser
 from app.db.models.platform_user import PlatformUser
 

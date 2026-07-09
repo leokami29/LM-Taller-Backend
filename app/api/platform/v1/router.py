@@ -1,18 +1,18 @@
 from fastapi import APIRouter
 
-from app.api.platform.v1.endpoints import auth as platform_auth
-from app.api.platform.v1.endpoints import companies as platform_companies
-from app.api.platform.v1.endpoints import impersonate as platform_impersonate
-from app.api.platform.v1.endpoints import stripe_webhook
-from app.api.platform.v1.endpoints import subscriptions as platform_subscriptions
 from app.api.platform.v1.endpoints import analytics as platform_analytics
+from app.api.platform.v1.endpoints import audit_logs as platform_audit_logs
+from app.api.platform.v1.endpoints import auth as platform_auth
+from app.api.platform.v1.endpoints import billing as platform_billing
+from app.api.platform.v1.endpoints import catalog_plans as platform_catalog_plans
+from app.api.platform.v1.endpoints import companies as platform_companies
 from app.api.platform.v1.endpoints import config as platform_config
+from app.api.platform.v1.endpoints import impersonate as platform_impersonate
 from app.api.platform.v1.endpoints import installations as platform_installations
 from app.api.platform.v1.endpoints import installations_global as platform_installations_global
 from app.api.platform.v1.endpoints import session_policy as platform_session_policy
-from app.api.platform.v1.endpoints import catalog_plans as platform_catalog_plans
-from app.api.platform.v1.endpoints import audit_logs as platform_audit_logs
-from app.api.platform.v1.endpoints import billing as platform_billing
+from app.api.platform.v1.endpoints import stripe_webhook
+from app.api.platform.v1.endpoints import subscriptions as platform_subscriptions
 
 router = APIRouter(prefix="/api/platform/v1")
 

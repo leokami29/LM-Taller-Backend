@@ -3,7 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from sqlalchemy import Enum as SAEnum, ForeignKey, Integer, UniqueConstraint
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy import ForeignKey, Integer, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 

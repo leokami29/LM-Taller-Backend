@@ -2,11 +2,14 @@ from contextlib import contextmanager
 from datetime import timedelta
 from uuid import uuid4
 
-from app.api.v1.endpoints import sync_admin
 from app.core.dt import utc_now
-from app.core.enums import SubscriptionStatus
+from app.core.enums import OrderPriority, OrderStatus, SubscriptionStatus
 from app.core.security import SecurityUtils
+from app.db.models.customer import Customer
+from app.db.models.equipment import Equipment
 from app.db.models.rbac import Site
+from app.db.models.service_order import ServiceOrder
+from app.services.sync_admin import context as sync_context_module
 
 
 def _auth_headers(user):
@@ -20,7 +23,7 @@ def _patch_tenant_session(monkeypatch, db_session, calls):
         calls.append(company_id)
         yield db_session
 
-    monkeypatch.setattr(sync_admin, "tenant_session_for_company", fake_tenant_session_for_company)
+    monkeypatch.setattr(sync_context_module, "tenant_session_for_company", fake_tenant_session_for_company)
 
 
 def test_sync_admin_bootstrap_uses_tenant_session_for_company(
@@ -114,3 +117,107 @@ def test_sync_admin_push_rejects_expired_active_subscription_payload(
     result = response.json()["results"][0]
     assert result["status"] == "rejected"
     assert "anterior" in result["detail"].lower()
+
+
+def test_sync_admin_push_customer_create(
+    client,
+    db_session,
+    seed_company_and_admin,
+    monkeypatch,
+):
+    company, admin = seed_company_and_admin
+    calls = []
+    _patch_tenant_session(monkeypatch, db_session, calls)
+    customer_id = uuid4()
+    mutation = {
+        "mutation_id": str(uuid4()),
+        "entity": "customer",
+        "entity_id": str(customer_id),
+        "op": "create",
+        "updated_at": utc_now().isoformat(),
+        "payload": {
+            "first_name": "Ana",
+            "last_name": "García",
+            "email": "ana@example.com",
+            "phone": "+56912345678",
+        },
+    }
+
+    response = client.post(
+        "/api/v1/sync/admin/push",
+        headers=_auth_headers(admin),
+        json={"mutations": [mutation]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["results"][0]["status"] == "applied"
+    customer = (
+        db_session.query(Customer)
+        .filter(Customer.id == customer_id, Customer.company_id == company.id)
+        .first()
+    )
+    assert customer is not None
+    assert customer.first_name == "Ana"
+    assert customer.last_name == "García"
+
+
+def test_sync_admin_push_service_order_create(
+    client,
+    db_session,
+    seed_company_and_admin,
+    monkeypatch,
+):
+    company, admin = seed_company_and_admin
+    calls = []
+    _patch_tenant_session(monkeypatch, db_session, calls)
+    customer = Customer(
+        company_id=company.id,
+        first_name="Pedro",
+        last_name="Ruiz",
+        email="pedro@example.com",
+    )
+    equipment = Equipment(
+        company_id=company.id,
+        serial_number="SN-OFF-001",
+        brand="Samsung",
+        model="A54",
+    )
+    db_session.add(customer)
+    db_session.add(equipment)
+    db_session.commit()
+    db_session.refresh(customer)
+    db_session.refresh(equipment)
+    order_id = uuid4()
+    mutation = {
+        "mutation_id": str(uuid4()),
+        "entity": "service_order",
+        "entity_id": str(order_id),
+        "op": "create",
+        "updated_at": utc_now().isoformat(),
+        "payload": {
+            "order_number": "OS-OFF-001",
+            "order_kind": "workshop_intake",
+            "equipment_id": str(equipment.id),
+            "current_customer_id": str(customer.id),
+            "status": OrderStatus.RECEIVED.value,
+            "priority": OrderPriority.MEDIUM.value,
+            "problem_description": "Pantalla rota",
+        },
+    }
+
+    response = client.post(
+        "/api/v1/sync/admin/push",
+        headers=_auth_headers(admin),
+        json={"mutations": [mutation]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["results"][0]["status"] == "applied"
+    order = (
+        db_session.query(ServiceOrder)
+        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == company.id)
+        .first()
+    )
+    assert order is not None
+    assert order.order_number == "OS-OFF-001"
+    assert order.problem_description == "Pantalla rota"

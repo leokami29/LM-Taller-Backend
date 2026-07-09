@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict
-from typing import Optional
 
 from app.infrastructure.redis_client import get_sync_redis
 

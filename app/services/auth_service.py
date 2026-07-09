@@ -3,7 +3,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.core.security import SecurityUtils, TYP_TENANT
+from app.core.security import TYP_TENANT, SecurityUtils
 from app.db.models.company import Company
 from app.db.models.user import User
 from app.services.session_policy_service import ResolvedSession, resolve_tenant_session

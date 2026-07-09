@@ -11,11 +11,11 @@ from app.core.permissions import (
     EQUIPMENT_READ,
     EQUIPMENT_WRITE,
 )
-from app.dependencies import RequirePermission, ensure_not_viewer_for_mutation
 from app.db.models.customer import Customer
 from app.db.models.equipment import Equipment, EquipmentAttribute
 from app.db.models.user import User
 from app.db.session import get_db
+from app.dependencies import RequirePermission, ensure_not_viewer_for_mutation
 from app.schemas.common import PaginatedResponse
 from app.schemas.equipment import (
     EquipmentAttributeCreate,

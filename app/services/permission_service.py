@@ -14,9 +14,9 @@ from sqlalchemy.orm import Session
 from app.core.dt import utc_now
 from app.core.entitlements import Entitlements
 from app.core.enums import UserRole
-from app.core.subscription_lifecycle import subscription_is_usable
 from app.core.features import permission_to_module
 from app.core.permissions import TENANT_ROLE_PERMISSIONS, tenant_has_permission
+from app.core.subscription_lifecycle import subscription_is_usable
 from app.db.models.audit_log import AuditLog
 from app.db.models.company import Company
 from app.db.models.rbac import Site, TemporaryPermission, UserSiteRole

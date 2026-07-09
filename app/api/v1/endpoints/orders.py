@@ -1,13 +1,10 @@
-import csv
 from datetime import datetime
 from decimal import Decimal
-from io import StringIO
 from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.core.dt import utc_now
 from app.core.enums import OrderPriority, OrderStatus, ServiceOrderKind, UserRole
@@ -18,49 +15,60 @@ from app.core.permissions import (
     ORDERS_STATUS,
     ORDERS_WRITE,
 )
-from app.dependencies import RequirePermission, ensure_not_viewer_for_mutation
+from app.core.tracking_code import ensure_order_tracking_code
 from app.db.models.customer import Customer
 from app.db.models.rbac import Site
-from app.db.models.service_order import ServiceOrder, ServiceOrderCostLine, ServiceOrderTimeline
+from app.db.models.service_order import ServiceOrder, ServiceOrderCostLine
 from app.db.models.service_order_image import ServiceOrderImage
 from app.db.models.user import User
 from app.db.session import get_db
+from app.dependencies import RequirePermission, ensure_not_viewer_for_mutation
 from app.schemas.common import PaginatedResponse
-from app.db.models.inventory import InventoryMovement
 from app.schemas.inventory import InventoryMovementResponse
 from app.schemas.service_order import (
+    NextOrderNumberResponse,
+    OrderTimelineEntryResponse,
     ServiceOrderCostLineCreate,
     ServiceOrderCostLineResponse,
     ServiceOrderCostLineUpdate,
-    NextOrderNumberResponse,
     ServiceOrderCreate,
     ServiceOrderImageCreate,
     ServiceOrderImageResponse,
     ServiceOrderResponse,
     ServiceOrderStatusPatch,
-    OrderTimelineEntryResponse,
     ServiceOrderUpdate,
 )
-from app.services.permission_service import PermissionService
 from app.services.order_document_registry import (
     auto_generate_delivery_slips,
     auto_generate_intake_slips,
     load_order_for_documents,
 )
-from app.core.tracking_code import ensure_order_tracking_code
 from app.services.order_document_service import generate_work_order_summary
-from app.services.tracking_urls import resolve_tenant_slug_for_company
+from app.services.order_query_service import (
+    OrderListFilters,
+    export_orders_csv,
+    get_order,
+    get_order_for_print,
+    get_order_image,
+    get_order_timeline,
+    list_cost_lines,
+    list_order_images,
+    list_order_parts,
+    list_orders,
+)
 from app.services.order_service import (
     add_cost_line,
     change_order_status,
     create_service_order,
     delete_cost_line,
-    peek_next_order_number,
     get_cost_line_for_order,
     order_has_cost_lines,
+    peek_next_order_number,
     recompute_total_cost,
     update_cost_line,
 )
+from app.services.permission_service import PermissionService
+from app.services.tracking_urls import resolve_tenant_slug_for_company
 from app.utils.helpers import apply_allowed_updates
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -69,6 +77,13 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 def _require_non_reception_for_costs(user: User) -> None:
     if user.role == UserRole.RECEPTION:
         raise HTTPException(status_code=403, detail="Recepción no puede modificar costos")
+
+
+def _order_or_404(db: Session, *, company_id: UUID, order_id: UUID) -> ServiceOrder:
+    order = get_order(db, company_id=company_id, order_id=order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    return order
 
 
 @router.get("/export")
@@ -80,43 +95,13 @@ def export_orders(
     current_user: User = Depends(RequirePermission(ORDERS_READ)),
     db: Session = Depends(get_db),
 ) -> Response:
-    q = db.query(ServiceOrder).filter(ServiceOrder.company_id == current_user.company_id)
-    if status_filter:
-        q = q.filter(ServiceOrder.status == status_filter)
-    if order_kind:
-        q = q.filter(ServiceOrder.order_kind == order_kind)
-    if date_from:
-        q = q.filter(ServiceOrder.created_at >= date_from)
-    if date_to:
-        q = q.filter(ServiceOrder.created_at <= date_to)
-    orders = q.order_by(ServiceOrder.created_at.desc()).all()
-
-    output = StringIO()
-    writer = csv.writer(output)
-    writer.writerow([
-        "order_number", "order_kind", "status", "priority",
-        "customer", "equipment_serial", "problem_description",
-        "diagnosis_notes", "cost_parts", "cost_labor", "total_cost",
-        "created_at",
-    ])
-    for order in orders:
-        writer.writerow([
-            order.order_number,
-            order.order_kind.value if order.order_kind else "",
-            order.status.value if order.status else "",
-            order.priority.value if order.priority else "",
-            f"{order.current_customer.first_name} {order.current_customer.last_name}" if order.current_customer else "",
-            order.equipment.serial_number if order.equipment else "",
-            (order.problem_description or "").replace("\n", " "),
-            (order.diagnosis_notes or "").replace("\n", " "),
-            float(order.cost_parts or 0),
-            float(order.cost_labor or 0),
-            float(order.total_cost or 0),
-            order.created_at.isoformat() if order.created_at else "",
-        ])
-
-    csv_bytes = output.getvalue().encode("utf-8-sig")
-    output.close()
+    filters = OrderListFilters(
+        status=status_filter,
+        order_kind=order_kind,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    csv_bytes = export_orders_csv(db, company_id=current_user.company_id, filters=filters)
     return Response(
         content=csv_bytes,
         media_type="text/csv; charset=utf-8",
@@ -125,7 +110,7 @@ def export_orders(
 
 
 @router.get("/", response_model=PaginatedResponse[ServiceOrderResponse])
-def list_orders(
+def list_orders_endpoint(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     status_filter: Optional[OrderStatus] = Query(None, alias="status"),
@@ -138,28 +123,22 @@ def list_orders(
     current_user: User = Depends(RequirePermission(ORDERS_READ)),
     db: Session = Depends(get_db),
 ) -> dict:
-    q = db.query(ServiceOrder).filter(ServiceOrder.company_id == current_user.company_id)
-    if status_filter:
-        q = q.filter(ServiceOrder.status == status_filter)
-    if priority:
-        q = q.filter(ServiceOrder.priority == priority)
-    if order_kind:
-        q = q.filter(ServiceOrder.order_kind == order_kind)
-    if customer_id:
-        q = q.filter(
-            or_(ServiceOrder.current_customer_id == customer_id, ServiceOrder.original_owner_id == customer_id)
-        )
-    if equipment_id:
-        q = q.filter(ServiceOrder.equipment_id == equipment_id)
-    if service_contract_id:
-        q = q.filter(ServiceOrder.service_contract_id == service_contract_id)
-    if search:
-        term = f"%{search.lower()}%"
-        q = q.filter(
-            or_(ServiceOrder.order_number.ilike(term), ServiceOrder.problem_description.ilike(term))
-        )
-    total = q.count()
-    items = q.order_by(ServiceOrder.created_at.desc()).offset(skip).limit(limit).all()
+    filters = OrderListFilters(
+        status=status_filter,
+        priority=priority,
+        order_kind=order_kind,
+        search=search,
+        customer_id=customer_id,
+        equipment_id=equipment_id,
+        service_contract_id=service_contract_id,
+    )
+    items, total = list_orders(
+        db,
+        company_id=current_user.company_id,
+        skip=skip,
+        limit=limit,
+        filters=filters,
+    )
     return {"items": items, "total": total, "skip": skip, "limit": limit}
 
 
@@ -198,9 +177,7 @@ def create_order(
             accessories_json=payload.accessories_json,
         )
         db.commit()
-        loaded = load_order_for_documents(
-            db, company_id=current_user.company_id, order_id=order.id
-        )
+        loaded = load_order_for_documents(db, company_id=current_user.company_id, order_id=order.id)
         if loaded:
             auto_generate_intake_slips(db, order=loaded, user=current_user)
             db.commit()
@@ -230,19 +207,12 @@ def get_next_order_number(
 
 
 @router.get("/{order_id}", response_model=ServiceOrderResponse)
-def get_order(
+def get_order_endpoint(
     order_id: UUID,
     current_user: User = Depends(RequirePermission(ORDERS_READ)),
     db: Session = Depends(get_db),
 ) -> ServiceOrder:
-    order = (
-        db.query(ServiceOrder)
-        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
-        .first()
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Orden no encontrada")
-    return order
+    return _order_or_404(db, company_id=current_user.company_id, order_id=order_id)
 
 
 @router.get("/{order_id}/cost-lines", response_model=list[ServiceOrderCostLineResponse])
@@ -251,19 +221,8 @@ def list_order_cost_lines(
     current_user: User = Depends(RequirePermission(ORDERS_READ)),
     db: Session = Depends(get_db),
 ) -> list[ServiceOrderCostLine]:
-    order = (
-        db.query(ServiceOrder)
-        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
-        .first()
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Orden no encontrada")
-    return (
-        db.query(ServiceOrderCostLine)
-        .filter(ServiceOrderCostLine.service_order_id == order_id)
-        .order_by(ServiceOrderCostLine.sort_order, ServiceOrderCostLine.created_at)
-        .all()
-    )
+    _order_or_404(db, company_id=current_user.company_id, order_id=order_id)
+    return list_cost_lines(db, order_id=order_id)
 
 
 @router.post(
@@ -279,13 +238,7 @@ def create_order_cost_line(
 ) -> ServiceOrderCostLine:
     ensure_not_viewer_for_mutation(current_user)
     _require_non_reception_for_costs(current_user)
-    order = (
-        db.query(ServiceOrder)
-        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
-        .first()
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    order = _order_or_404(db, company_id=current_user.company_id, order_id=order_id)
     line = add_cost_line(
         db,
         order=order,
@@ -309,13 +262,7 @@ def update_order_cost_line(
 ) -> ServiceOrderCostLine:
     ensure_not_viewer_for_mutation(current_user)
     _require_non_reception_for_costs(current_user)
-    order = (
-        db.query(ServiceOrder)
-        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
-        .first()
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    order = _order_or_404(db, company_id=current_user.company_id, order_id=order_id)
     line = get_cost_line_for_order(db, company_id=current_user.company_id, order_id=order_id, line_id=line_id)
     if not line:
         raise HTTPException(status_code=404, detail="Línea de costo no encontrada")
@@ -343,13 +290,7 @@ def delete_order_cost_line(
 ) -> Response:
     ensure_not_viewer_for_mutation(current_user)
     _require_non_reception_for_costs(current_user)
-    order = (
-        db.query(ServiceOrder)
-        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
-        .first()
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    order = _order_or_404(db, company_id=current_user.company_id, order_id=order_id)
     line = get_cost_line_for_order(db, company_id=current_user.company_id, order_id=order_id, line_id=line_id)
     if not line:
         raise HTTPException(status_code=404, detail="Línea de costo no encontrada")
@@ -366,13 +307,7 @@ def update_order(
     db: Session = Depends(get_db),
 ) -> ServiceOrder:
     ensure_not_viewer_for_mutation(current_user)
-    order = (
-        db.query(ServiceOrder)
-        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
-        .first()
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    order = _order_or_404(db, company_id=current_user.company_id, order_id=order_id)
 
     data = payload.model_dump(exclude_unset=True)
     if current_user.role == UserRole.RECEPTION and data.keys() & {
@@ -386,16 +321,16 @@ def update_order(
     if order_has_cost_lines(db, order.id) and {"cost_parts", "cost_labor"} & data.keys():
         raise HTTPException(
             status_code=400,
-            detail="La orden tiene líneas de costo; gestiona el desglose o elimina las líneas antes de editar totales aquí.",
+            detail=(
+                "La orden tiene líneas de costo; gestiona el desglose o elimina las líneas "
+                "antes de editar totales aquí."
+            ),
         )
 
     if "current_customer_id" in data and data["current_customer_id"]:
         c = (
             db.query(Customer)
-            .filter(
-                Customer.id == data["current_customer_id"],
-                Customer.company_id == current_user.company_id,
-            )
+            .filter(Customer.id == data["current_customer_id"], Customer.company_id == current_user.company_id)
             .first()
         )
         if not c:
@@ -403,10 +338,7 @@ def update_order(
     if "original_owner_id" in data and data["original_owner_id"]:
         c = (
             db.query(Customer)
-            .filter(
-                Customer.id == data["original_owner_id"],
-                Customer.company_id == current_user.company_id,
-            )
+            .filter(Customer.id == data["original_owner_id"], Customer.company_id == current_user.company_id)
             .first()
         )
         if not c:
@@ -414,10 +346,7 @@ def update_order(
     if data.get("assigned_to_id"):
         u = (
             db.query(User)
-            .filter(
-                User.id == data["assigned_to_id"],
-                User.company_id == current_user.company_id,
-            )
+            .filter(User.id == data["assigned_to_id"], User.company_id == current_user.company_id)
             .first()
         )
         if not u:
@@ -433,10 +362,7 @@ def update_order(
     if data.get("received_by_id"):
         u = (
             db.query(User)
-            .filter(
-                User.id == data["received_by_id"],
-                User.company_id == current_user.company_id,
-            )
+            .filter(User.id == data["received_by_id"], User.company_id == current_user.company_id)
             .first()
         )
         if not u:
@@ -450,11 +376,25 @@ def update_order(
         )
 
     allowed = (
-        "priority", "assigned_to_id", "problem_description", "diagnosis_notes",
-        "estimated_completion", "actual_completion", "cost_parts", "cost_labor",
-        "current_customer_id", "original_owner_id", "site_id", "received_at",
-        "received_by_id", "customer_po_number", "sales_area", "device_condition_on_entry",
-        "service_contract_id", "parent_order_id", "portal_submitted_json",
+        "priority",
+        "assigned_to_id",
+        "problem_description",
+        "diagnosis_notes",
+        "estimated_completion",
+        "actual_completion",
+        "cost_parts",
+        "cost_labor",
+        "current_customer_id",
+        "original_owner_id",
+        "site_id",
+        "received_at",
+        "received_by_id",
+        "customer_po_number",
+        "sales_area",
+        "device_condition_on_entry",
+        "service_contract_id",
+        "parent_order_id",
+        "portal_submitted_json",
     )
     apply_allowed_updates(order, data, allowed)
     recompute_total_cost(db, order)
@@ -471,13 +411,7 @@ def patch_order_status(
     db: Session = Depends(get_db),
     user: User = Depends(RequirePermission(ORDERS_STATUS)),
 ) -> ServiceOrder:
-    order = (
-        db.query(ServiceOrder)
-        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == user.company_id)
-        .first()
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    order = _order_or_404(db, company_id=user.company_id, order_id=order_id)
     try:
         change_order_status(
             db,
@@ -490,9 +424,7 @@ def patch_order_status(
         if payload.status == OrderStatus.DELIVERED:
             if not order.actual_completion:
                 order.actual_completion = utc_now()
-            loaded = load_order_for_documents(
-                db, company_id=user.company_id, order_id=order.id
-            )
+            loaded = load_order_for_documents(db, company_id=user.company_id, order_id=order.id)
             if loaded:
                 auto_generate_delivery_slips(db, order=loaded, user=user)
         db.commit()
@@ -508,55 +440,20 @@ def delete_order(
     current_user: User = Depends(RequirePermission(ORDERS_DELETE)),
     db: Session = Depends(get_db),
 ) -> dict:
-    order = (
-        db.query(ServiceOrder)
-        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
-        .first()
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    order = _order_or_404(db, company_id=current_user.company_id, order_id=order_id)
     db.delete(order)
     db.commit()
     return {"message": "Orden eliminada", "status": "success"}
 
 
-def _timeline_entry_response(entry: ServiceOrderTimeline) -> OrderTimelineEntryResponse:
-    kind = "created" if entry.old_status is None else "status_change"
-    changed_by = entry.changed_by
-    return OrderTimelineEntryResponse(
-        id=entry.id,
-        kind=kind,
-        timestamp=entry.changed_at,
-        old_status=entry.old_status,
-        new_status=entry.new_status,
-        notes=entry.notes,
-        time_spent_seconds=entry.time_spent_seconds,
-        changed_by_id=entry.changed_by_id,
-        changed_by_name=changed_by.full_name if changed_by else None,
-    )
-
-
 @router.get("/{order_id}/timeline", response_model=list[OrderTimelineEntryResponse])
-def get_order_timeline(
+def get_order_timeline_endpoint(
     order_id: UUID,
     current_user: User = Depends(RequirePermission(ORDERS_READ)),
     db: Session = Depends(get_db),
 ) -> list[OrderTimelineEntryResponse]:
-    order = (
-        db.query(ServiceOrder)
-        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
-        .first()
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Orden no encontrada")
-    entries = (
-        db.query(ServiceOrderTimeline)
-        .options(joinedload(ServiceOrderTimeline.changed_by))
-        .filter(ServiceOrderTimeline.service_order_id == order_id)
-        .order_by(ServiceOrderTimeline.changed_at.desc())
-        .all()
-    )
-    return [_timeline_entry_response(e) for e in entries]
+    _order_or_404(db, company_id=current_user.company_id, order_id=order_id)
+    return get_order_timeline(db, order_id=order_id)
 
 
 @router.get("/{order_id}/parts", response_model=list[InventoryMovementResponse])
@@ -564,20 +461,9 @@ def get_order_parts(
     order_id: UUID,
     current_user: User = Depends(RequirePermission(ORDERS_READ)),
     db: Session = Depends(get_db),
-) -> list[InventoryMovement]:
-    order = (
-        db.query(ServiceOrder)
-        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
-        .first()
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Orden no encontrada")
-    return (
-        db.query(InventoryMovement)
-        .filter(InventoryMovement.service_order_id == order_id)
-        .order_by(InventoryMovement.moved_at.desc())
-        .all()
-    )
+):
+    _order_or_404(db, company_id=current_user.company_id, order_id=order_id)
+    return list_order_parts(db, order_id=order_id)
 
 
 @router.get("/{order_id}/print")
@@ -586,18 +472,7 @@ def print_order(
     current_user: User = Depends(RequirePermission(ORDERS_READ)),
     db: Session = Depends(get_db),
 ) -> Response:
-    order = (
-        db.query(ServiceOrder)
-        .options(
-            joinedload(ServiceOrder.company),
-            joinedload(ServiceOrder.current_customer),
-            joinedload(ServiceOrder.equipment),
-            joinedload(ServiceOrder.cost_lines),
-            joinedload(ServiceOrder.timeline_entries),
-        )
-        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
-        .first()
-    )
+    order = get_order_for_print(db, company_id=current_user.company_id, order_id=order_id)
     if not order:
         raise HTTPException(status_code=404, detail="Orden no encontrada")
     ensure_order_tracking_code(db, order)
@@ -611,24 +486,13 @@ def print_order(
 
 
 @router.get("/{order_id}/images", response_model=list[ServiceOrderImageResponse])
-def list_order_images(
+def list_order_images_endpoint(
     order_id: UUID,
     current_user: User = Depends(RequirePermission(ORDERS_READ)),
     db: Session = Depends(get_db),
 ) -> list[ServiceOrderImage]:
-    order = (
-        db.query(ServiceOrder)
-        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
-        .first()
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Orden no encontrada")
-    return (
-        db.query(ServiceOrderImage)
-        .filter(ServiceOrderImage.service_order_id == order_id)
-        .order_by(ServiceOrderImage.sort_order, ServiceOrderImage.created_at)
-        .all()
-    )
+    _order_or_404(db, company_id=current_user.company_id, order_id=order_id)
+    return list_order_images(db, order_id=order_id)
 
 
 @router.post(
@@ -643,13 +507,7 @@ def create_order_image(
     db: Session = Depends(get_db),
 ) -> ServiceOrderImage:
     ensure_not_viewer_for_mutation(current_user)
-    order = (
-        db.query(ServiceOrder)
-        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
-        .first()
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    _order_or_404(db, company_id=current_user.company_id, order_id=order_id)
     image = ServiceOrderImage(
         service_order_id=order_id,
         url=payload.url,
@@ -670,21 +528,10 @@ def delete_order_image(
     db: Session = Depends(get_db),
 ) -> Response:
     ensure_not_viewer_for_mutation(current_user)
-    order = (
-        db.query(ServiceOrder)
-        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == current_user.company_id)
-        .first()
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Orden no encontrada")
-    image = (
-        db.query(ServiceOrderImage)
-        .filter(ServiceOrderImage.id == image_id, ServiceOrderImage.service_order_id == order_id)
-        .first()
-    )
+    _order_or_404(db, company_id=current_user.company_id, order_id=order_id)
+    image = get_order_image(db, order_id=order_id, image_id=image_id)
     if not image:
         raise HTTPException(status_code=404, detail="Imagen no encontrada")
     db.delete(image)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-

@@ -5,17 +5,15 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.core.permissions import ORDERS_WRITE
 from app.db.models.pdf_document import PDFDocument
-from app.db.models.service_order import ServiceOrder
 from app.db.models.user import User
 from app.db.session import get_db
 from app.dependencies import RequirePermission
 from app.services.email_service import get_smtp_config, send_pdf_to_client, send_test_email
 from app.services.order_document_registry import load_order_for_documents, read_document_bytes
-from app.schemas.company import CompanyEmailSettings
 
 router = APIRouter(prefix="/orders", tags=["order-email"])
 

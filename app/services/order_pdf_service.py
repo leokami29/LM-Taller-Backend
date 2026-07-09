@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
 from io import BytesIO
 from typing import TYPE_CHECKING
-from uuid import UUID
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     Paragraph,

@@ -12,14 +12,13 @@ from typing import TYPE_CHECKING, Literal
 import barcode
 import qrcode
 from barcode.writer import ImageWriter
-from PIL import Image as PILImage
+from reportlab.graphics.barcode import code128 as rl_code128
+from reportlab.graphics.shapes import Drawing
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
-from reportlab.graphics.barcode import code128 as rl_code128
-from reportlab.graphics.shapes import Drawing
 from reportlab.platypus import (
     Image,
     Paragraph,

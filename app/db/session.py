@@ -13,7 +13,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
-from app.core.security import SecurityUtils, TYP_PLATFORM, TYP_TENANT
+from app.core.security import TYP_PLATFORM, TYP_TENANT, SecurityUtils
 from app.db.rls import apply_rls_session_context
 from app.tenancy import TenantResolveError, tenant_engine_manager, tenant_resolver
 

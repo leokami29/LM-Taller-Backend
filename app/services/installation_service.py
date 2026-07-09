@@ -9,9 +9,8 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.dt import utc_now
-from app.services.plan_catalog_service import desktop_policy_for_plan_code
 from app.db.catalog.models import TenantInstallation
-from app.db.models.company import Company
+from app.services.plan_catalog_service import desktop_policy_for_plan_code
 
 
 def _active_seat_count(db: Session, company_id: UUID) -> int:

@@ -7,15 +7,19 @@ from sqlalchemy.orm import Session
 from app.core.enums import UserRole
 from app.core.permissions import ADMIN_USERS
 from app.core.security import SecurityUtils
-from app.dependencies import PermissionContext, RequirePermission, get_permission_context
+from app.db.models.company import Company
 from app.db.models.rbac import Site, UserSiteRole
 from app.db.models.user import User
-from app.db.models.company import Company
 from app.db.session import get_db
-from app.schemas.user import UserAdminCreate, UserPasswordUpdate, UserResponse, UserUpdate
+from app.dependencies import PermissionContext, RequirePermission, get_permission_context
 from app.schemas.company import CompanyEmailSettings, CompanyLogoUpdate, CompanyResponse, CompanyUpdate
-from app.services.tenant_config_events import TenantConfigReason, bump_company_config_revision, notify_company_config_changed
+from app.schemas.user import UserAdminCreate, UserPasswordUpdate, UserResponse, UserUpdate
 from app.services.permission_service import PermissionService
+from app.services.tenant_config_events import (
+    TenantConfigReason,
+    bump_company_config_revision,
+    notify_company_config_changed,
+)
 from app.utils.helpers import apply_allowed_updates
 
 router = APIRouter(prefix="/admin", tags=["admin"])

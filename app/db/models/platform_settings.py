@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
+
 class PlatformSetting(Base):
     __tablename__ = "platform_settings"
 

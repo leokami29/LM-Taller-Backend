@@ -5,17 +5,17 @@ from __future__ import annotations
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
 from app.core.permissions import PLATFORM_COMPANIES_READ, PLATFORM_COMPANIES_WRITE
-from app.dependencies import RequirePlatformPermission
 from app.db.catalog.models import TenantRouting
 from app.db.models.company import Company
 from app.db.models.rbac import Site
 from app.db.models.user import User
 from app.db.session import get_db, tenant_engine_manager
+from app.dependencies import RequirePlatformPermission
 from app.schemas.session_policy import (
     CompanySessionPolicyUpdate,
     GlobalSessionDefaultsSchema,
@@ -27,6 +27,7 @@ from app.schemas.session_policy import (
     SiteSessionPolicyUpdate,
     UserSessionPolicyUpdate,
 )
+from app.services import platform_config_service as pcfg
 from app.services.session_policy_service import (
     SessionPolicyEntry,
     entry_display,
@@ -39,8 +40,11 @@ from app.services.session_policy_service import (
     set_site_policy,
     set_user_policy,
 )
-from app.services import platform_config_service as pcfg
-from app.services.tenant_config_events import TenantConfigReason, bump_company_config_revision, notify_company_config_changed
+from app.services.tenant_config_events import (
+    TenantConfigReason,
+    bump_company_config_revision,
+    notify_company_config_changed,
+)
 
 router = APIRouter(prefix="/companies", tags=["platform-session-policy"])
 

@@ -8,14 +8,13 @@ from app.config import settings
 from app.core.dt import utc_now
 from app.core.permissions import PLATFORM_COMPANIES_READ
 from app.db.catalog.models import Plan, Subscription, TenantInstallation, TenantRouting
-from app.db.session import catalog_session_scope
-from app.services import plan_catalog_service as pcs
 from app.db.models.company import Company
 from app.db.models.platform_user import PlatformUser
 from app.db.models.rbac import Site
-from app.db.session import get_db, tenant_engine_manager
+from app.db.session import catalog_session_scope, get_db, tenant_engine_manager
 from app.dependencies import RequirePlatformPermission
 from app.schemas.platform import PlatformAnalyticsResponse
+from app.services import plan_catalog_service as pcs
 
 router = APIRouter(prefix="/analytics", tags=["platform-analytics"])
 

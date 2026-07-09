@@ -10,14 +10,19 @@ from app.core.dt import utc_now
 from app.core.enums import SubscriptionStatus, UserRole
 from app.core.permissions import PLATFORM_COMPANIES_READ, PLATFORM_COMPANIES_WRITE
 from app.core.security import SecurityUtils
-from app.dependencies import RequirePlatformPermission
 from app.db.catalog.models import Plan, Subscription, TenantRouting
 from app.db.models.company import Company
 from app.db.models.platform_user import PlatformUser
+from app.db.models.rbac import Site
 from app.db.models.user import User
 from app.db.session import get_db, tenant_engine_manager
-from app.schemas.platform import PlatformCompanyCreate, PlatformCompanyResponse, PlatformCompanyUpdate, PlatformSiteResponse
-from app.db.models.rbac import Site
+from app.dependencies import RequirePlatformPermission
+from app.schemas.platform import (
+    PlatformCompanyCreate,
+    PlatformCompanyResponse,
+    PlatformCompanyUpdate,
+    PlatformSiteResponse,
+)
 from app.services.permission_service import get_catalog_subscription_period_end
 from app.services.tenant_config_events import TenantConfigReason, company_patch_meta, post_company_mutation
 

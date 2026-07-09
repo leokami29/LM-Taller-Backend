@@ -5,17 +5,15 @@ from __future__ import annotations
 from typing import Annotated, Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.config import settings
-from app.core.security import oauth2_scheme, SecurityUtils, TOKEN_USE_ACCESS, TYP_TENANT
+from app.db.catalog.models import TenantRouting
 from app.db.models.company import Company
 from app.db.models.user import User
 from app.db.session import catalog_session_scope, tenant_session_for_company
 from app.dependencies import get_current_user
 from app.schemas.license import (
-    DesktopActivateRequest,
     LicenseStatusResponse,
     SignedLicenseManifest,
 )
@@ -23,7 +21,6 @@ from app.services.installation_service import is_seat_revoked, register_or_touch
 from app.services.license_manifest_service import build_license_manifest
 from app.services.permission_service import PermissionService
 from app.services.tenant_config_events import read_company_config_revision, read_global_config_revision
-from app.db.catalog.models import TenantRouting
 
 router = APIRouter(prefix="/license", tags=["license"])
 

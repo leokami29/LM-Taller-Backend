@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.dt import utc_now
 from app.core.features import MODULE_CUSTOMER_PORTAL
-from app.core.security import SecurityUtils, TYP_PORTAL
+from app.core.security import TYP_PORTAL, SecurityUtils
 from app.db.models.company import Company
 from app.db.models.customer_portal_user import CustomerPortalUser
 from app.services.permission_service import PermissionService

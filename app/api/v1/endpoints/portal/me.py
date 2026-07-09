@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.dependencies import PortalContext, get_portal_context
 from app.db.models.service_contract import ServiceContract
 from app.db.session import get_db
-from app.schemas.portal import PortalMeResponse
-from app.schemas.portal import PortalUserResponse
+from app.dependencies import PortalContext, get_portal_context
+from app.schemas.portal import PortalMeResponse, PortalUserResponse
 from app.schemas.service_contract import ServiceContractResponse
 from app.services.contract_service import contract_is_active
 

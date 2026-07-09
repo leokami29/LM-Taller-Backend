@@ -8,7 +8,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
 from app.core.permissions import PLATFORM_AUDIT_READ
 from app.db.catalog.models import CatalogAuditLog

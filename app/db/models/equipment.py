@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from app.db.models.company import Company
     from app.db.models.customer import Customer
     from app.db.models.supplier import Supplier
-    from app.db.models.service_order import ServiceOrder
 
 
 class Equipment(Base):

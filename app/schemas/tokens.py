@@ -3,9 +3,9 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.schemas.license import SignedLicenseManifest
 from app.schemas.platform import PlatformUserResponse
 from app.schemas.session_policy import SessionEffectiveSchema
-from app.schemas.license import SignedLicenseManifest
 from app.schemas.user import UserResponse
 
 
