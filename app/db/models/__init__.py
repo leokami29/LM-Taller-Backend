@@ -3,6 +3,7 @@ from app.db.models.company import Company
 from app.db.models.customer import Customer
 from app.db.models.customer_portal_user import CustomerPortalUser
 from app.db.models.equipment import Equipment
+from app.db.models.field_report import FieldReport
 from app.db.models.inventory import InventoryItem, InventoryMovement
 from app.db.models.inventory_category import InventoryCategory
 from app.db.models.order_number_sequence import OrderNumberSequence
@@ -29,6 +30,7 @@ __all__ = [
     "Customer",
     "CustomerPortalUser",
     "Equipment",
+    "FieldReport",
     "OrderNumberSequence",
     "OrderTrackingSequence",
     "ServiceContract",

@@ -123,3 +123,9 @@ class RoleChangeStatus(str, Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
+
+
+class FieldReportStatus(str, Enum):
+    DRAFT = "draft"
+    SUBMITTED = "submitted"
+    REVIEWED = "reviewed"

@@ -8,6 +8,7 @@ from app.api.v1.endpoints import (
     auth,
     customers,
     equipment,
+    field_reports,
     inventory,
     inventory_categories,
     license,
@@ -37,6 +38,7 @@ router.include_router(orders.router)
 router.include_router(order_documents.router)
 router.include_router(order_email.router)
 router.include_router(service_contracts.router)
+router.include_router(field_reports.router)
 router.include_router(portal_users.router)
 router.include_router(portal.router)
 router.include_router(public_tracking.router)
