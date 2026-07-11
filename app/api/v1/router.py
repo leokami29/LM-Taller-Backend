@@ -20,6 +20,7 @@ from app.api.v1.endpoints import (
     portal_users,
     public_tracking,
     service_contracts,
+    sla_policies,
     sync_admin,
     tenant_events,
 )
@@ -39,6 +40,7 @@ router.include_router(order_documents.router)
 router.include_router(order_email.router)
 router.include_router(service_contracts.router)
 router.include_router(field_reports.router)
+router.include_router(sla_policies.router)
 router.include_router(portal_users.router)
 router.include_router(portal.router)
 router.include_router(public_tracking.router)

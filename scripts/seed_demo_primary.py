@@ -896,6 +896,72 @@ def populate_primary_demo_company(
     ])
 
     # -----------------------------------------------------------------------
+    # Políticas SLA
+    # -----------------------------------------------------------------------
+    from app.db.models.sla_policy import SlaPolicy
+
+    session.add_all([
+        SlaPolicy(
+            company_id=cid,
+            name="Urgente - Taller",
+            order_kind=ServiceOrderKind.WORKSHOP_INTAKE,
+            priority=OrderPriority.URGENT,
+            response_time_hours=1,
+            resolution_time_hours=4,
+            warning_threshold_hours=1,
+            is_active=True,
+        ),
+        SlaPolicy(
+            company_id=cid,
+            name="Alta - Taller",
+            order_kind=ServiceOrderKind.WORKSHOP_INTAKE,
+            priority=OrderPriority.HIGH,
+            response_time_hours=2,
+            resolution_time_hours=8,
+            warning_threshold_hours=2,
+            is_active=True,
+        ),
+        SlaPolicy(
+            company_id=cid,
+            name="Normal - Taller",
+            order_kind=ServiceOrderKind.WORKSHOP_INTAKE,
+            priority=OrderPriority.MEDIUM,
+            response_time_hours=4,
+            resolution_time_hours=24,
+            warning_threshold_hours=6,
+            is_active=True,
+        ),
+        SlaPolicy(
+            company_id=cid,
+            name="Baja - Taller",
+            order_kind=ServiceOrderKind.WORKSHOP_INTAKE,
+            priority=OrderPriority.LOW,
+            response_time_hours=8,
+            resolution_time_hours=48,
+            warning_threshold_hours=6,
+            is_active=True,
+        ),
+        SlaPolicy(
+            company_id=cid,
+            name="Servicio en campo - Urgente",
+            order_kind=ServiceOrderKind.FIELD_SERVICE,
+            priority=OrderPriority.URGENT,
+            response_time_hours=2,
+            resolution_time_hours=8,
+            warning_threshold_hours=2,
+            is_active=True,
+        ),
+        SlaPolicy(
+            company_id=cid,
+            name="Global por defecto",
+            response_time_hours=4,
+            resolution_time_hours=24,
+            warning_threshold_hours=6,
+            is_active=True,
+        ),
+    ])
+
+    # -----------------------------------------------------------------------
     # Contratos de servicio — 3 tipos: maintenance, warranty, field_sla
     # -----------------------------------------------------------------------
     contract_main = ServiceContract(

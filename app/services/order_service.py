@@ -16,6 +16,7 @@ from app.core.enums import (
 from app.core.exceptions import InvalidOrderTransitionError
 from app.core.order_number import format_order_number, parse_order_number
 from app.core.tracking_code import allocate_tracking_code
+from app.services.sla_policy_service import compute_estimated_completion
 from app.db.models.customer import Customer
 from app.db.models.equipment import Equipment
 from app.db.models.order_number_sequence import OrderNumberSequence
@@ -353,8 +354,19 @@ def create_service_order(
         intake_at = received_at or utc_now()
         if estimated_completion and estimated_completion < intake_at:
             raise ValueError("La fecha prometida no puede ser anterior al ingreso")
-    elif estimated_completion and received_at and estimated_completion < received_at:
-        raise ValueError("La fecha programada no puede ser anterior al registro")
+    else:
+        intake_at = received_at
+        if estimated_completion and received_at and estimated_completion < received_at:
+            raise ValueError("La fecha programada no puede ser anterior al registro")
+
+    if not estimated_completion and intake_at:
+        estimated_completion = compute_estimated_completion(
+            db,
+            company_id=company_id,
+            order_kind=order_kind,
+            priority=priority,
+            start_at=intake_at,
+        )
 
     order_number = allocate_order_number(
         db, company_id=company_id, site=site, order_kind=order_kind

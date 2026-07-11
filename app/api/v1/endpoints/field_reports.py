@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.permissions import ORDERS_READ, ORDERS_WRITE
 from app.db.models.field_report import FieldReport
 from app.db.session import get_db
-from app.dependencies import PermissionContext, RequirePermission
+from app.dependencies import PermissionContext, get_permission_context
 from app.schemas.common import PaginatedResponse
 from app.schemas.field_report import (
     FieldReportCreate,
@@ -28,9 +28,11 @@ def list_field_reports(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     order_id: Optional[UUID] = Query(None),
-    ctx: PermissionContext = Depends(RequirePermission(ORDERS_READ)),
+    ctx: PermissionContext = Depends(get_permission_context),
     db: Session = Depends(get_db),
 ) -> dict:
+    if ORDERS_READ not in ctx.permissions:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Permiso requerido: {ORDERS_READ}")
     q = db.query(FieldReport).filter(FieldReport.company_id == ctx.company_id)
     if order_id:
         q = q.filter(FieldReport.order_id == order_id)
@@ -42,9 +44,11 @@ def list_field_reports(
 @router.post("/", response_model=FieldReportResponse, status_code=status.HTTP_201_CREATED)
 def create_field_report_endpoint(
     payload: FieldReportCreate,
-    ctx: PermissionContext = Depends(RequirePermission(ORDERS_WRITE)),
+    ctx: PermissionContext = Depends(get_permission_context),
     db: Session = Depends(get_db),
 ) -> FieldReport:
+    if ORDERS_WRITE not in ctx.permissions:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Permiso requerido: {ORDERS_WRITE}")
     row = create_field_report(
         db,
         company_id=ctx.company_id,
@@ -65,9 +69,11 @@ def create_field_report_endpoint(
 @router.get("/{report_id}", response_model=FieldReportResponse)
 def get_field_report(
     report_id: UUID,
-    ctx: PermissionContext = Depends(RequirePermission(ORDERS_READ)),
+    ctx: PermissionContext = Depends(get_permission_context),
     db: Session = Depends(get_db),
 ) -> FieldReport:
+    if ORDERS_READ not in ctx.permissions:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Permiso requerido: {ORDERS_READ}")
     row = (
         db.query(FieldReport)
         .filter(FieldReport.id == report_id, FieldReport.company_id == ctx.company_id)
@@ -82,9 +88,11 @@ def get_field_report(
 def update_field_report_endpoint(
     report_id: UUID,
     payload: FieldReportUpdate,
-    ctx: PermissionContext = Depends(RequirePermission(ORDERS_WRITE)),
+    ctx: PermissionContext = Depends(get_permission_context),
     db: Session = Depends(get_db),
 ) -> FieldReport:
+    if ORDERS_WRITE not in ctx.permissions:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Permiso requerido: {ORDERS_WRITE}")
     row = (
         db.query(FieldReport)
         .filter(FieldReport.id == report_id, FieldReport.company_id == ctx.company_id)
@@ -101,9 +109,11 @@ def update_field_report_endpoint(
 @router.delete("/{report_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_field_report_endpoint(
     report_id: UUID,
-    ctx: PermissionContext = Depends(RequirePermission(ORDERS_WRITE)),
+    ctx: PermissionContext = Depends(get_permission_context),
     db: Session = Depends(get_db),
 ) -> Response:
+    if ORDERS_WRITE not in ctx.permissions:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Permiso requerido: {ORDERS_WRITE}")
     row = (
         db.query(FieldReport)
         .filter(FieldReport.id == report_id, FieldReport.company_id == ctx.company_id)

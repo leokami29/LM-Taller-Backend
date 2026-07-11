@@ -6,6 +6,7 @@ from app.db.models.equipment import Equipment
 from app.db.models.field_report import FieldReport
 from app.db.models.inventory import InventoryItem, InventoryMovement
 from app.db.models.inventory_category import InventoryCategory
+from app.db.models.sla_policy import SlaPolicy
 from app.db.models.order_number_sequence import OrderNumberSequence
 from app.db.models.order_tracking_sequence import OrderTrackingSequence
 from app.db.models.pdf_document import PDFDocument
@@ -31,6 +32,7 @@ __all__ = [
     "CustomerPortalUser",
     "Equipment",
     "FieldReport",
+    "SlaPolicy",
     "OrderNumberSequence",
     "OrderTrackingSequence",
     "ServiceContract",
