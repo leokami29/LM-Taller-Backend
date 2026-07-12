@@ -30,6 +30,7 @@ from app.core.enums import (
 from app.db.models.company import Company
 from app.db.models.customer import Customer
 from app.db.models.equipment import Equipment
+from app.db.models.field_report import FieldReport
 from app.db.models.inventory import InventoryItem, InventoryMovement
 from app.db.models.inventory_category import InventoryCategory
 from app.db.models.pdf_document import PDFDocument
@@ -544,6 +545,32 @@ def ensure_secondary_demodata(
                              old_status=OrderStatus.COMPLETED.value,
                              new_status=OrderStatus.DELIVERED.value,
                              changed_by_id=recep.id, notes="Entregado al cliente"),
+    ])
+
+    # Reportes de campo de ejemplo (tenant secundario)
+    session.add_all([
+        FieldReport(
+            company_id=company.id,
+            site_id=principal_site.id,
+            order_id=order5.id,
+            technician_id=tech_a.id,
+            title="Reparación pantalla — reporte de campo",
+            findings="Pantalla rota en esquina inferior derecha. Táctil funcional excepto en zona de impacto.",
+            recommendations="Reemplazar módulo completo de pantalla y aplicar protector de cristal templado.",
+            status="reviewed",
+            photos_urls=["https://placehold.co/600x400?text=Pantalla+rota"],
+        ),
+        FieldReport(
+            company_id=company.id,
+            site_id=principal_site.id,
+            order_id=None,
+            technician_id=tech_b.id,
+            title="Revisión post-entrega laptop corporativa",
+            findings="Cliente confirma encendido estable. No se detectan reinicios ni sobrecalentamiento.",
+            recommendations="Cerrar seguimiento. Garantía de 30 días activa.",
+            status="submitted",
+            photos_urls=[],
+        ),
     ])
 
     company.next_order_number = max(int(company.next_order_number or 1), 10 + 6)

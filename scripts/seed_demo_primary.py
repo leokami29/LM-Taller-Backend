@@ -27,6 +27,7 @@ from app.db.models.customer_portal_user import CustomerPortalUser
 from app.db.models.equipment import Equipment, EquipmentAttribute
 from app.db.models.inventory import InventoryItem, InventoryMovement
 from app.db.models.inventory_category import InventoryCategory
+from app.db.models.field_report import FieldReport
 from app.db.models.pdf_document import PDFDocument
 from app.db.models.rbac import RoleChangeRequest, TemporaryPermission
 from app.db.models.service_contract import ServiceContract
@@ -1078,6 +1079,46 @@ def populate_primary_demo_company(
     # Timeline para orden de campo
     session.add(_timeline_entry(field_order, None, OrderStatus.RECEIVED, recep2,
                                  "Visita campo — SLA Tecnologías del Pacífico"))
+
+    # Reportes de campo de ejemplo
+    session.add_all([
+        FieldReport(
+            company_id=cid,
+            site_id=norte.id,
+            order_id=field_order.id,
+            technician_id=tech3.id,
+            title="Diagnóstico en sitio — MagSafe",
+            findings="Conector MagSafe presenta doblez de 45° en pines 1 y 2. No hay corto en la placa lógica.",
+            recommendations="Reemplazar conector MagSafe y cable flex asociado. Presupuesto aprobado por cliente.",
+            status="submitted",
+            photos_urls=[
+                "https://placehold.co/600x400?text=MagSafe+doblado",
+                "https://placehold.co/600x400?text=Placa+limpia",
+            ],
+        ),
+        FieldReport(
+            company_id=cid,
+            site_id=norte.id,
+            order_id=None,
+            technician_id=tech3.id,
+            title="Inspección rack de red — visita preventiva",
+            findings="Switch principal con firmware desactualizado. Ventiladores en 85% de uso continuo.",
+            recommendations="Programar actualización de firmware fuera de horario crítico. Revisar ventiladores en 30 días.",
+            status="draft",
+            photos_urls=["https://placehold.co/600x400?text=Switch+rack"],
+        ),
+        FieldReport(
+            company_id=cid,
+            site_id=principal.id,
+            order_id=None,
+            technician_id=tech1.id,
+            title="Mantenimiento preventivo servidor",
+            findings="Servidor operativo. Temperatura promedio 42°C. RAID en estado óptimo.",
+            recommendations="Ninguna acción requerida. Próximo mantenimiento en 90 días.",
+            status="reviewed",
+            photos_urls=[],
+        ),
+    ])
 
     # Escenarios adicionales y ajuste del contador de órdenes
     apply_primary_extended_scenarios(
