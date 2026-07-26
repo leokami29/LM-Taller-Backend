@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.enums import UserRole
+from app.core.network_guards import validate_logo_reference, validate_smtp_endpoint
 from app.core.permissions import ADMIN_USERS
 from app.core.security import SecurityUtils
 from app.db.models.company import Company
@@ -213,6 +214,11 @@ def update_own_company(
     data = payload.model_dump(exclude_unset=True)
     if not data:
         return company
+    if "logo_url" in data:
+        try:
+            data["logo_url"] = validate_logo_reference(data["logo_url"])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     apply_allowed_updates(company, data, ("name", "address", "phone", "email", "country", "currency", "logo_url"))
         
@@ -255,13 +261,16 @@ def update_company_logo(
     company = db.query(Company).filter(Company.id == admin.company_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
-    if payload.logo_base64 and payload.mime_type:
-        data_uri = f"data:{payload.mime_type};base64,{payload.logo_base64}"
-        company.logo_url = data_uri
-    elif payload.logo_url is not None:
-        company.logo_url = payload.logo_url
-    else:
-        raise HTTPException(status_code=400, detail="Debe proveer logo_url o logo_base64+mime_type")
+    try:
+        if payload.logo_base64 and payload.mime_type:
+            data_uri = f"data:{payload.mime_type};base64,{payload.logo_base64}"
+            company.logo_url = validate_logo_reference(data_uri)
+        elif payload.logo_url is not None:
+            company.logo_url = validate_logo_reference(payload.logo_url)
+        else:
+            raise HTTPException(status_code=400, detail="Debe proveer logo_url o logo_base64+mime_type")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     revision = bump_company_config_revision(company)
     db.add(company)
     db.commit()
@@ -278,7 +287,9 @@ def get_company_email_settings(
     company = db.query(Company).filter(Company.id == admin.company_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
-    raw = (company.settings_json or {}).get("email_settings", {})
+    raw = dict((company.settings_json or {}).get("email_settings", {}) or {})
+    if raw.get("smtp_password"):
+        raw["smtp_password"] = None
     return CompanyEmailSettings(**raw)
 
 
@@ -292,8 +303,21 @@ def update_company_email_settings(
     company = db.query(Company).filter(Company.id == admin.company_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    try:
+        host, port = validate_smtp_endpoint(payload.smtp_host, payload.smtp_port)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     settings = dict(company.settings_json or {})
-    settings["email_settings"] = payload.model_dump(exclude_none=True)
+    email_data = payload.model_dump(exclude_none=True)
+    if host is not None:
+        email_data["smtp_host"] = host
+    email_data["smtp_port"] = port
+    # Si no envían password, conservar el existente.
+    if not email_data.get("smtp_password"):
+        prev = (company.settings_json or {}).get("email_settings") or {}
+        if prev.get("smtp_password"):
+            email_data["smtp_password"] = prev["smtp_password"]
+    settings["email_settings"] = email_data
     company.settings_json = settings
     db.add(company)
     db.commit()
@@ -305,6 +329,8 @@ def update_company_email_settings(
         resource_id=company.id,
         request=None,
         site_id=ctx.site_id,
-        changes={"smtp_host": payload.smtp_host},
+        changes={"smtp_host": host},
     )
-    return payload
+    safe = dict(email_data)
+    safe["smtp_password"] = None
+    return CompanyEmailSettings(**safe)

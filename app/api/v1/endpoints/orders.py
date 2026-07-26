@@ -22,7 +22,13 @@ from app.db.models.service_order import ServiceOrder, ServiceOrderCostLine
 from app.db.models.service_order_image import ServiceOrderImage
 from app.db.models.user import User
 from app.db.session import get_db
-from app.dependencies import RequirePermission, ensure_not_viewer_for_mutation
+from app.api.deps.permissions import current_permission_site_id
+from app.dependencies import (
+    PermissionContext,
+    RequirePermission,
+    ensure_not_viewer_for_mutation,
+    get_permission_context,
+)
 from app.schemas.common import PaginatedResponse
 from app.schemas.inventory import InventoryMovementResponse
 from app.schemas.service_order import (
@@ -79,8 +85,15 @@ def _require_non_reception_for_costs(user: User) -> None:
         raise HTTPException(status_code=403, detail="Recepción no puede modificar costos")
 
 
-def _order_or_404(db: Session, *, company_id: UUID, order_id: UUID) -> ServiceOrder:
-    order = get_order(db, company_id=company_id, order_id=order_id)
+def _order_or_404(
+    db: Session,
+    *,
+    company_id: UUID,
+    order_id: UUID,
+    site_id: UUID | None = None,
+) -> ServiceOrder:
+    scoped_site = site_id if site_id is not None else current_permission_site_id()
+    order = get_order(db, company_id=company_id, order_id=order_id, site_id=scoped_site)
     if not order:
         raise HTTPException(status_code=404, detail="Orden no encontrada")
     return order
@@ -93,6 +106,7 @@ def export_orders(
     date_from: Optional[datetime] = Query(None),
     date_to: Optional[datetime] = Query(None),
     current_user: User = Depends(RequirePermission(ORDERS_READ)),
+    ctx: PermissionContext = Depends(get_permission_context),
     db: Session = Depends(get_db),
 ) -> Response:
     filters = OrderListFilters(
@@ -100,6 +114,7 @@ def export_orders(
         order_kind=order_kind,
         date_from=date_from,
         date_to=date_to,
+        site_id=ctx.site_id,
     )
     csv_bytes = export_orders_csv(db, company_id=current_user.company_id, filters=filters)
     return Response(
@@ -121,6 +136,7 @@ def list_orders_endpoint(
     equipment_id: Optional[UUID] = Query(None, description="Filtrar por equipo"),
     service_contract_id: Optional[UUID] = Query(None, description="Filtrar por contrato"),
     current_user: User = Depends(RequirePermission(ORDERS_READ)),
+    ctx: PermissionContext = Depends(get_permission_context),
     db: Session = Depends(get_db),
 ) -> dict:
     filters = OrderListFilters(
@@ -131,6 +147,7 @@ def list_orders_endpoint(
         customer_id=customer_id,
         equipment_id=equipment_id,
         service_contract_id=service_contract_id,
+        site_id=ctx.site_id,
     )
     items, total = list_orders(
         db,
@@ -146,12 +163,16 @@ def list_orders_endpoint(
 def create_order(
     payload: ServiceOrderCreate,
     current_user: User = Depends(RequirePermission(ORDERS_WRITE)),
+    ctx: PermissionContext = Depends(get_permission_context),
     db: Session = Depends(get_db),
 ) -> ServiceOrder:
     ensure_not_viewer_for_mutation(current_user)
     ok, reason = PermissionService(db).can_create_order(current_user.company_id)
     if not ok:
         raise HTTPException(status_code=403, detail=reason)
+    site_id = payload.site_id
+    if ctx.site_id is not None and site_id != ctx.site_id:
+        raise HTTPException(status_code=403, detail="No puede crear órdenes en otra sede")
 
     try:
         order = create_service_order(
@@ -164,7 +185,7 @@ def create_order(
             priority=payload.priority,
             created_by_id=current_user.id,
             device_condition_on_entry=payload.device_condition_on_entry,
-            site_id=payload.site_id,
+            site_id=site_id,
             received_at=payload.received_at,
             received_by_id=payload.received_by_id,
             customer_po_number=payload.customer_po_number,

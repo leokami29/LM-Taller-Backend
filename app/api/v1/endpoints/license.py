@@ -12,7 +12,8 @@ from app.db.catalog.models import TenantRouting
 from app.db.models.company import Company
 from app.db.models.user import User
 from app.db.session import catalog_session_scope, tenant_session_for_company
-from app.dependencies import get_current_user
+from app.core.permissions import ADMIN_USERS
+from app.dependencies import RequirePermission, get_current_user
 from app.schemas.license import (
     LicenseStatusResponse,
     SignedLicenseManifest,
@@ -39,7 +40,7 @@ def _tenant_slug_for_company(company_id: UUID) -> str:
 def get_license_manifest(
     installation_id: Annotated[str, Query(min_length=8, max_length=128)],
     hostname: Annotated[Optional[str], Query(max_length=255)] = None,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(RequirePermission(ADMIN_USERS)),
 ) -> SignedLicenseManifest:
     with tenant_session_for_company(current_user.company_id) as db:
         company = db.query(Company).filter(Company.id == current_user.company_id).first()

@@ -117,6 +117,20 @@ def portal_create_order(
     )
     if not equipment:
         raise HTTPException(status_code=400, detail="Equipo no encontrado")
+    owns_equipment = equipment.original_owner_id == ctx.customer_id
+    if not owns_equipment:
+        prior = (
+            db.query(ServiceOrder.id)
+            .filter(
+                ServiceOrder.company_id == ctx.company_id,
+                ServiceOrder.equipment_id == equipment.id,
+                ServiceOrder.current_customer_id == ctx.customer_id,
+            )
+            .first()
+        )
+        owns_equipment = prior is not None
+    if not owns_equipment:
+        raise HTTPException(status_code=403, detail="Equipo no pertenece a este cliente")
 
     try:
         submitted = validate_submitted_against_template(

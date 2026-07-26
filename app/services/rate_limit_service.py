@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict
+from threading import Lock
 
 from app.infrastructure.redis_client import get_sync_redis
 
@@ -13,6 +14,7 @@ class RateLimiter:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self._fallback: dict[str, list[float]] = defaultdict(list)
+        self._lock = Lock()
 
     def is_allowed(self, key: str) -> bool:
         redis_client = get_sync_redis()
@@ -35,22 +37,27 @@ class RateLimiter:
     def _memory_check(self, key: str) -> bool:
         now = time.time()
         window_start = now - self.window_seconds
-        requests = self._fallback[key]
-        requests = [t for t in requests if t > window_start]
-        self._fallback[key] = requests
-        if len(requests) >= self.max_requests:
-            return False
-        requests.append(now)
-        return True
+        with self._lock:
+            requests = [t for t in self._fallback[key] if t > window_start]
+            self._fallback[key] = requests
+            if len(requests) >= self.max_requests:
+                return False
+            requests.append(now)
+            return True
+
+
+_LOGIN_LIMITER = RateLimiter(max_requests=10, window_seconds=60)
+_STRICT_LOGIN_LIMITER = RateLimiter(max_requests=5, window_seconds=60)
+_PUBLIC_TRACKING_LIMITER = RateLimiter(max_requests=60, window_seconds=60)
 
 
 def login_rate_limiter() -> RateLimiter:
-    return RateLimiter(max_requests=10, window_seconds=60)
+    return _LOGIN_LIMITER
 
 
 def strict_login_rate_limiter() -> RateLimiter:
-    return RateLimiter(max_requests=5, window_seconds=60)
+    return _STRICT_LOGIN_LIMITER
 
 
 def public_tracking_rate_limiter() -> RateLimiter:
-    return RateLimiter(max_requests=60, window_seconds=60)
+    return _PUBLIC_TRACKING_LIMITER

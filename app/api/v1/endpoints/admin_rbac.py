@@ -300,6 +300,17 @@ def grant_temporary_permission(
     target = db.query(User).filter(User.id == user_id, User.company_id == ctx.company_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    svc = PermissionService(db)
+    ent = svc.get_entitlements(ctx.company_id)
+    from app.core.features import permission_to_module
+
+    if not ent.has_module(permission_to_module(payload.permission)):
+        raise HTTPException(
+            status_code=400,
+            detail="El permiso no está incluido en el plan de la empresa",
+        )
+    if payload.site_id is not None and not svc.user_has_site_access(user_id, ctx.company_id, payload.site_id):
+        raise HTTPException(status_code=400, detail="El usuario no tiene acceso a esa sede")
     expires = utc_now() + timedelta(days=payload.expires_in_days)
     row = TemporaryPermission(
         user_id=user_id,

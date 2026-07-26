@@ -69,6 +69,32 @@ class PermissionService:
         period_end = self.get_subscription_period_end(company_id)
         return subscription_is_usable(ent.status, period_end)
 
+    def has_company_wide_role(self, user_id: UUID, company_id: UUID) -> bool:
+        return (
+            self.db.query(UserSiteRole)
+            .filter(
+                UserSiteRole.user_id == user_id,
+                UserSiteRole.company_id == company_id,
+                UserSiteRole.site_id.is_(None),
+                UserSiteRole.is_active.is_(True),
+            )
+            .first()
+            is not None
+        )
+
+    def has_any_site_role(self, user_id: UUID, company_id: UUID) -> bool:
+        return (
+            self.db.query(UserSiteRole)
+            .filter(
+                UserSiteRole.user_id == user_id,
+                UserSiteRole.company_id == company_id,
+                UserSiteRole.site_id.isnot(None),
+                UserSiteRole.is_active.is_(True),
+            )
+            .first()
+            is not None
+        )
+
     def resolve_role_for_site(
         self,
         user_id: UUID,
@@ -87,12 +113,18 @@ class PermissionService:
             row = q.filter(UserSiteRole.site_id == site_id).first()
             if row is None:
                 row = q.filter(UserSiteRole.site_id.is_(None)).first()
-        else:
-            row = q.filter(UserSiteRole.site_id.is_(None)).first()
-            if row is None:
-                row = q.filter(UserSiteRole.site_id.isnot(None)).first()
+            if row:
+                return row.role
+            return None
+
+        # Sin sede activa: solo rol de empresa (site_id NULL). Nunca promover un rol de otra sede.
+        row = q.filter(UserSiteRole.site_id.is_(None)).first()
         if row:
             return row.role
+        # Compatibilidad: usuarios sin filas UserSiteRole usan el rol legado en users.role
+        # únicamente si no tienen roles acotados a sede.
+        if self.has_any_site_role(user_id, company_id):
+            return None
         user = self.db.query(User).filter(User.id == user_id, User.company_id == company_id).first()
         return user.role if user else None
 
@@ -114,7 +146,10 @@ class PermissionService:
         )
         out: set[str] = set()
         for row in rows:
-            if row.site_id is None or site_id is None or row.site_id == site_id:
+            # Permiso de sede solo aplica con X-Site-Id coincidente; nunca se eleva a global.
+            if row.site_id is None:
+                out.add(row.permission)
+            elif site_id is not None and row.site_id == site_id:
                 out.add(row.permission)
         return out
 
@@ -137,7 +172,9 @@ class PermissionService:
             for p in TENANT_ROLE_PERMISSIONS.get(role, frozenset())
             if ent.has_module(permission_to_module(p))
         }
-        base.update(self._active_temporary_permissions(user_id, company_id, site_id))
+        for perm in self._active_temporary_permissions(user_id, company_id, site_id):
+            if ent.has_module(permission_to_module(perm)):
+                base.add(perm)
         return frozenset(base)
 
     def has_permission(

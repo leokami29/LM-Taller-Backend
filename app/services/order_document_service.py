@@ -101,15 +101,23 @@ def _load_logo(company) -> ImageReader | None:
     if not logo_url:
         return None
     try:
-        if logo_url.startswith("data:"):
-            # data URI base64
-            header, encoded = logo_url.split(",", 1)
+        from app.core.network_guards import _MAX_LOGO_BYTES, validate_logo_reference
+
+        safe_url = validate_logo_reference(logo_url)
+        if not safe_url:
+            return None
+        if safe_url.startswith("data:"):
+            header, encoded = safe_url.split(",", 1)
             img_bytes = base64.b64decode(encoded)
+            if len(img_bytes) > _MAX_LOGO_BYTES:
+                return None
             return ImageReader(BytesIO(img_bytes))
-        else:
-            req = urllib.request.Request(logo_url, headers={"User-Agent": "SGtaller/1.0"})
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                return ImageReader(BytesIO(resp.read()))
+        req = urllib.request.Request(safe_url, headers={"User-Agent": "SGtaller/1.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310 — host validated
+            data = resp.read(_MAX_LOGO_BYTES + 1)
+            if len(data) > _MAX_LOGO_BYTES:
+                return None
+            return ImageReader(BytesIO(data))
     except Exception:
         logger.debug("No se pudo cargar logo desde %s", logo_url)
         return None

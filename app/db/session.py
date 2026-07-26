@@ -13,7 +13,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
-from app.core.security import TYP_PLATFORM, TYP_TENANT, SecurityUtils
+from app.core.security import TYP_PLATFORM, TYP_PORTAL, TYP_TENANT, SecurityUtils
 from app.db.rls import apply_rls_session_context
 from app.tenancy import TenantResolveError, tenant_engine_manager, tenant_resolver
 
@@ -69,7 +69,7 @@ def _data_plane_company_id_from_authorization(authorization: str | None) -> UUID
             return UUID(str(raw))
         except ValueError:
             return None
-    if typ in (None, TYP_TENANT):
+    if typ in (None, TYP_TENANT, TYP_PORTAL):
         raw = payload.get("company_id")
         if not raw:
             return None
@@ -78,6 +78,16 @@ def _data_plane_company_id_from_authorization(authorization: str | None) -> UUID
         except ValueError:
             return None
     return None
+
+
+_ANON_TENANT_PATH_PREFIXES = (
+    "/api/v1/portal/auth/login",
+    "/api/v1/portal/auth/token",
+    "/api/v1/auth/login",
+    "/api/v1/auth/token",
+    "/api/v1/auth/refresh",
+    "/api/v1/public/",
+)
 
 
 def get_catalog_db(request: Request) -> Generator[Session, None, None]:
@@ -141,6 +151,15 @@ def get_db(request: Request) -> Generator[Session, None, None]:
         db = SessionLocal()
         try:
             apply_rls_session_context(db, request.headers.get("Authorization"))
+            yield db
+        finally:
+            db.close()
+        return
+
+    if any(path.startswith(prefix) for prefix in _ANON_TENANT_PATH_PREFIXES):
+        # Login anónimo: sesión monolito (el endpoint abre tenant_session_for_slug si aplica).
+        db = SessionLocal()
+        try:
             yield db
         finally:
             db.close()

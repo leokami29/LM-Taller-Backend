@@ -1,3 +1,4 @@
+from contextvars import ContextVar
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -9,6 +10,12 @@ from app.core.enums import UserRole
 from app.db.models.user import User
 from app.db.session import get_db
 from app.services.permission_service import PermissionService
+
+_current_permission_site_id: ContextVar[UUID | None] = ContextVar("permission_site_id", default=None)
+
+
+def current_permission_site_id() -> UUID | None:
+    return _current_permission_site_id.get()
 
 
 @dataclass
@@ -43,10 +50,20 @@ def get_permission_context(
         site_id = site_id_query
     if site_id is not None and not svc.user_has_site_access(user.id, user.company_id, site_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sin acceso a esta sede")
+    if (
+        site_id is None
+        and not svc.has_company_wide_role(user.id, user.company_id)
+        and svc.has_any_site_role(user.id, user.company_id)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Site-Id es obligatorio para usuarios con rol limitado a sede",
+        )
     role = svc.resolve_role_for_site(user.id, user.company_id, site_id)
     if role is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Rol no asignado")
     perms = svc.get_user_permissions(user.id, user.company_id, site_id)
+    _current_permission_site_id.set(site_id)
     return PermissionContext(
         user=user,
         user_id=user.id,

@@ -34,6 +34,9 @@ def send_pdf_to_client(
 ) -> None:
     if not smtp_config.smtp_host:
         raise ValueError("SMTP no configurado en esta empresa")
+    from app.core.network_guards import validate_smtp_endpoint
+
+    host, port = validate_smtp_endpoint(smtp_config.smtp_host, smtp_config.smtp_port or 587)
 
     company_name = order.company.name if order.company else "SGtaller"
     from_email = smtp_config.smtp_from_email or smtp_config.smtp_user or ""
@@ -53,8 +56,7 @@ def send_pdf_to_client(
     attachment.add_header("Content-Disposition", "attachment", filename=pdf_filename)
     msg.attach(attachment)
 
-    port = smtp_config.smtp_port or 587
-    with smtplib.SMTP(smtp_config.smtp_host, port, timeout=15) as server:
+    with smtplib.SMTP(host, port, timeout=15) as server:
         if smtp_config.smtp_use_tls:
             server.starttls()
         if smtp_config.smtp_user and smtp_config.smtp_password:
@@ -66,14 +68,16 @@ def send_pdf_to_client(
 def send_test_email(*, smtp_config: CompanyEmailSettings, recipient_email: str) -> None:
     if not smtp_config.smtp_host:
         raise ValueError("SMTP no configurado")
+    from app.core.network_guards import validate_smtp_endpoint
+
+    host, port = validate_smtp_endpoint(smtp_config.smtp_host, smtp_config.smtp_port or 587)
     from_email = smtp_config.smtp_from_email or smtp_config.smtp_user or ""
     from_name = smtp_config.smtp_from_name or "SGtaller"
     msg = MIMEText("Este es un email de prueba enviado desde SGtaller.", "plain", "utf-8")
     msg["Subject"] = "Prueba de email — SGtaller"
     msg["From"] = f"{from_name} <{from_email}>"
     msg["To"] = recipient_email
-    port = smtp_config.smtp_port or 587
-    with smtplib.SMTP(smtp_config.smtp_host, port, timeout=15) as server:
+    with smtplib.SMTP(host, port, timeout=15) as server:
         if smtp_config.smtp_use_tls:
             server.starttls()
         if smtp_config.smtp_user and smtp_config.smtp_password:

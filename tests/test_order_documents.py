@@ -60,6 +60,7 @@ def test_tracking_code_unique_per_company(db_session, seed_company_and_admin):
     c2 = allocate_tracking_code(db_session, company_id=company.id)
     assert c1 != c2
     assert c1.startswith("TG-")
+    assert len(c1) >= 20  # TG- + token no secuencial
 
 
 def test_generate_intake_documents(client, db_session, seed_company_and_admin):

@@ -6,6 +6,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.dt import utc_now
@@ -24,6 +25,12 @@ def _active_seat_count(db: Session, company_id: UUID) -> int:
     )
 
 
+def _advisory_lock_company_seats(catalog_db: Session, company_id: UUID) -> None:
+    """Serializa altas de puestos por empresa (evita carrera al límite de seats)."""
+    lock_key = int(company_id.int % (2**63 - 1))
+    catalog_db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": lock_key})
+
+
 def register_or_touch_installation(
     catalog_db: Session,
     *,
@@ -39,12 +46,14 @@ def register_or_touch_installation(
         raise HTTPException(status_code=400, detail="installation_id es obligatorio")
 
     policy = desktop_policy_for_plan_code(catalog_db, plan_code)
+    _advisory_lock_company_seats(catalog_db, company_id)
     existing = (
         catalog_db.query(TenantInstallation)
         .filter(
             TenantInstallation.company_id == company_id,
             TenantInstallation.installation_id == installation_id,
         )
+        .with_for_update()
         .first()
     )
     now = utc_now()

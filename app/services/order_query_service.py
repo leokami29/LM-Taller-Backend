@@ -27,6 +27,7 @@ class OrderListFilters:
     service_contract_id: UUID | None = None
     date_from: datetime | None = None
     date_to: datetime | None = None
+    site_id: UUID | None = None
 
 
 def _base_orders_query(db: Session, company_id: UUID) -> Query:
@@ -34,6 +35,8 @@ def _base_orders_query(db: Session, company_id: UUID) -> Query:
 
 
 def _apply_filters(q: Query, filters: OrderListFilters) -> Query:
+    if filters.site_id is not None:
+        q = q.filter(ServiceOrder.site_id == filters.site_id)
     if filters.status:
         q = q.filter(ServiceOrder.status == filters.status)
     if filters.priority:
@@ -122,12 +125,17 @@ def export_orders_csv(
     return csv_bytes
 
 
-def get_order(db: Session, *, company_id: UUID, order_id: UUID) -> ServiceOrder | None:
-    return (
-        db.query(ServiceOrder)
-        .filter(ServiceOrder.id == order_id, ServiceOrder.company_id == company_id)
-        .first()
-    )
+def get_order(
+    db: Session,
+    *,
+    company_id: UUID,
+    order_id: UUID,
+    site_id: UUID | None = None,
+) -> ServiceOrder | None:
+    q = db.query(ServiceOrder).filter(ServiceOrder.id == order_id, ServiceOrder.company_id == company_id)
+    if site_id is not None:
+        q = q.filter(ServiceOrder.site_id == site_id)
+    return q.first()
 
 
 def get_order_for_print(db: Session, *, company_id: UUID, order_id: UUID) -> ServiceOrder | None:

@@ -41,8 +41,31 @@ def max_cursor(*groups: list[dict[str, Any]]) -> str:
     return max(str(v) for v in values)
 
 
+_USER_SECRET_KEYS = frozenset({"hashed_password", "password", "password_hash"})
+_EMAIL_SECRET_KEYS = frozenset({"smtp_password", "password"})
+
+
 def row(model: Any) -> dict[str, Any]:
     return jsonable_encoder(model)
+
+
+def sanitize_user_row(data: dict[str, Any]) -> dict[str, Any]:
+    cleaned = dict(data)
+    for key in _USER_SECRET_KEYS:
+        cleaned.pop(key, None)
+    return cleaned
+
+
+def sanitize_company_row(data: dict[str, Any]) -> dict[str, Any]:
+    cleaned = dict(data)
+    settings = dict(cleaned.get("settings_json") or {})
+    email = dict(settings.get("email_settings") or {})
+    for key in _EMAIL_SECRET_KEYS:
+        email.pop(key, None)
+    if "email_settings" in settings or email:
+        settings["email_settings"] = email
+    cleaned["settings_json"] = settings
+    return cleaned
 
 
 def build_snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
@@ -133,9 +156,9 @@ def build_snapshot(ctx: SyncContext) -> AdminSyncSnapshot:
     ent = svc.get_entitlements(ctx.company_id)
     period_end = svc.get_subscription_period_end(ctx.company_id)
     site_rows = [row(s) for s in sites]
-    user_rows = [row(u) for u in users]
+    user_rows = [sanitize_user_row(row(u)) for u in users]
     role_rows = [row(r) for r in roles]
-    company_row = row(company)
+    company_row = sanitize_company_row(row(company))
     customer_rows = [row(c) for c in customers]
     equipment_rows = [row(e) for e in equipment]
     order_rows = [row(o) for o in orders]

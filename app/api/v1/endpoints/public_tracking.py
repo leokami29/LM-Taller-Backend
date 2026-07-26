@@ -8,9 +8,12 @@ router = APIRouter(prefix="/public", tags=["public-tracking"])
 
 
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """IP del cliente. Solo usa X-Forwarded-For si hay proxy confiable (header X-Trusted-Proxy)."""
+    # Si el despliegue está detrás de un reverse proxy que elimina XFF del cliente,
+    # puede inyectar X-Real-IP. No confiamos en XFF arbitrario del atacante.
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip and real_ip.strip():
+        return real_ip.strip()
     if request.client:
         return request.client.host
     return "unknown"
@@ -27,7 +30,8 @@ def public_order_tracking(
 ) -> PublicOrderTrackingResponse:
     limiter = public_tracking_rate_limiter()
     ip = _client_ip(request)
-    if not limiter.is_allowed(f"public-tracking:{ip}"):
+    slug_key = (tenant_slug or "").strip().lower()[:64]
+    if not limiter.is_allowed(f"public-tracking:{ip}:{slug_key}"):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Demasiadas solicitudes. Intente más tarde.",
